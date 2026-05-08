@@ -1,8 +1,10 @@
 #include "humid.h"
 #include "driver/i2c.h"
 #include "esp_log.h"
+#include "esp_system.h"
 #include "state.h"
 #include "freertos/FreeRTOS.h"
+#include <stdint.h>
 
 static const char *TAG = "HUMID_SENSOR";
 
@@ -45,8 +47,7 @@ float humid_sensor_read_filtered(void) {
 
     // Thread-sicheres Schreiben in den globalen Systemstatus
     if (xSemaphoreTake(state_mutex, pdMS_TO_TICKS(10)) == pdTRUE) {
-        // Hier müsste in state.h noch ein Feld 'air_humidity' existieren
-        // sys_state.air_humidity = humid_filtered;
+        sys_state.air_humidity = humid_filtered;
         xSemaphoreGive(state_mutex);
     }
 

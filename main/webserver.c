@@ -1,33 +1,35 @@
-#include "webserver.h"
 #include "state.h"
-#include "esp_log.h"
-#include "cJSON.h"
+#include "webserver.h"
+#include "actor.h"
+#include <esp_log.h>
+#include <esp_http_server.h>
+#include <cJSON.h>
 
 static const char *TAG = "WEB_SERVER";
 
-// Diese Zeilen machen die eingebettete HTML-Datei im C-Code verfügbar
+/* Die index.html wird als Binärdaten eingebettet (siehe CMakeLists.txt) */
 extern const char index_html_start[] asm("_binary_index_html_start");
 extern const char index_html_end[]   asm("_binary_index_html_end");
 
-// 1. Handler: Liefert die index.html aus
-static esp_err_t get_root_handler(httpd_req_t *req) {
+// 1. Handler für die Webseite (Root)
+static esp_err_t root_get_handler(httpd_req_t *req) {
     size_t html_len = index_html_end - index_html_start;
     httpd_resp_set_type(req, "text/html");
-    return httpd_resp_send(req, index_html_start, html_len);
+    httpd_resp_send(req, index_html_start, html_len);
+    return ESP_OK;
 }
 
-// 2. Handler: Schickt Sensor-Daten als JSON zum Browser (GET /api/status)
-static esp_err_t get_status_handler(httpd_req_t *req) {
+// 2. API Handler: Status senden (JSON)
+static esp_err_t status_get_handler(httpd_req_t *req) {
     cJSON *root = cJSON_CreateObject();
     
-    // Wir holen uns die Daten sicher über den Mutex
+    // Daten sicher aus dem globalen State holen
     if (xSemaphoreTake(state_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
-        cJSON_AddNumberToObject(root, "temperature", 24.5); // Hier später echte Sensorwerte rein
-        cJSON_AddNumberToObject(root, "air_humidity", 45);
-        cJSON_AddNumberToObject(root, "soil_moisture_1", 60);
+        cJSON_AddNumberToObject(root, "temperature", sys_state.current_temp);
+        cJSON_AddNumberToObject(root, "air_humidity", sys_state.air_humidity);
+        cJSON_AddNumberToObject(root, "soil_moisture_1", 62);
         cJSON_AddBoolToObject(root, "pump_running", sys_state.valve_1_state);
-        cJSON_AddNumberToObject(root, "minutes_to_next_water", 120);
-        cJSON_AddNumberToObject(root, "timer_max_minutes", 240);
+        cJSON_AddNumberToObject(root, "minutes_to_next_water", 115);
         xSemaphoreGive(state_mutex);
     }
 
@@ -40,46 +42,62 @@ static esp_err_t get_status_handler(httpd_req_t *req) {
     return ESP_OK;
 }
 
-// 3. Handler: Empfängt Einstellungen vom Browser (POST /api/config)
-static esp_err_t post_config_handler(httpd_req_t *req) {
-    char buf[128];
+// 3. API Handler: Einstellungen empfangen (JSON)
+static esp_err_t config_post_handler(httpd_req_t *req) {
+    char content[128];
+    int ret = httpd_req_recv(req, content, sizeof(content));
+    if (ret <= 0) return ESP_FAIL;
+    content[ret] = '\0';
+
+    cJSON *root = cJSON_Parse(content);
+    if (root) {
+        if (xSemaphoreTake(state_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+            sys_state.watering_duration = cJSON_GetObjectItem(root, "watering_duration_min")->valueint;
+            // Logik zum Speichern im NVS (Flash) hier aufrufen
+            xSemaphoreGive(state_mutex);
+        }
+        cJSON_Delete(root);
+    }
+    httpd_resp_sendstr(req, "{\"status\":\"saved\"}");
+    return ESP_OK;
+}
+
+void start_webserver(void) {
+    httpd_handle_t server = NULL;
+    httpd_config_t config = HTTPD_DEFAULT_CONFIG();
+    config.lru_purge_enable = true; // Hilft bei vielen Verbindungen
+
+    if (httpd_start(&server, &config) == ESP_OK) {
+        // Routen registrieren
+        httpd_uri_t root = { .uri = "/", .method = HTTP_GET, .handler = root_get_handler };
+        httpd_register_uri_handler(server, &root);
+
+        httpd_uri_t status = { .uri = "/api/status", .method = HTTP_GET, .handler = status_get_handler };
+        httpd_register_uri_handler(server, &status);
+
+        httpd_uri_t config_uri = { .uri = "/api/config", .method = HTTP_POST, .handler = config_post_handler };
+        httpd_register_uri_handler(server, &config_uri);
+
+        httpd_uri_t watering_uri = { .uri = "/api/watering", .method = HTTP_POST, .handler = watering_start_handler };
+        httpd_register_uri_handler(server, &watering_uri);
+    }
+}
+
+static esp_err_t watering_start_handler(httpd_req_t *req) {
+    char buf[64];
     int ret = httpd_req_recv(req, buf, sizeof(buf));
     if (ret <= 0) return ESP_FAIL;
     buf[ret] = '\0';
 
     cJSON *root = cJSON_Parse(buf);
     if (root) {
-        if (xSemaphoreTake(state_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
-            sys_state.watering_duration = cJSON_GetObjectItem(root, "watering_duration_min")->valueint;
-            // Hier auch PWM-Wert für Pumpe speichern
-            ESP_LOGI(TAG, "Neue Dauer gespeichert: %d min", sys_state.watering_duration);
-            xSemaphoreGive(state_mutex);
-        }
+        int minutes = cJSON_GetObjectItem(root, "duration_min")->valueint;
+        
+        // JETZT: Übergabe an die Logik
+        actor_start_timed_watering(minutes); 
+        
         cJSON_Delete(root);
     }
-    
-    httpd_resp_sendstr(req, "{\"status\":\"ok\"}");
+    httpd_resp_sendstr(req, "{\"status\":\"started\"}");
     return ESP_OK;
-}
-
-// Server initialisieren und URI-Pfade registrieren
-httpd_handle_t start_webserver(void) {
-    httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    config.lru_purge_enable = true;
-
-    httpd_handle_t server = NULL;
-    if (httpd_start(&server, &config) == ESP_OK) {
-        // Pfad: /
-        httpd_uri_t root_uri = { .uri = "/", .method = HTTP_GET, .handler = get_root_handler };
-        httpd_register_uri_handler(server, &root_uri);
-
-        // Pfad: /api/status
-        httpd_uri_t status_uri = { .uri = "/api/status", .method = HTTP_GET, .handler = get_status_handler };
-        httpd_register_uri_handler(server, &status_uri);
-
-        // Pfad: /api/config
-        httpd_uri_t config_uri = { .uri = "/api/config", .method = HTTP_POST, .handler = post_config_handler };
-        httpd_register_uri_handler(server, &config_uri);
-    }
-    return server;
 }

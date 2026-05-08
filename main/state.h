@@ -8,6 +8,8 @@ typedef struct {
     bool valve_1_state;
     bool valve_2_state;
     int watering_duration;
+    float current_temp;
+    float air_humidity;
 } SystemState_t;
 
 // 'extern' sagt dem Compiler: Diese Variable existiert, ist aber in der .c Datei definiert

@@ -1,8 +1,8 @@
 menu "WIFI Configuration"
     config ESP_WIFI_SSID
-        string "WiFi SSID"
+        string "Viktor"
         default "dein_wlan_name"
     config ESP_WIFI_PASSWORD
-        string "WiFi Password"
+        string "minecraft"
         default "dein_passwort"
 endmenu

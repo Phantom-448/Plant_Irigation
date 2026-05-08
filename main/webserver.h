@@ -1,4 +1,6 @@
 #pragma once
-#include "esp_http_server.h"
+#include "state.h"
+#include <esp_log.h>
 
-httpd_handle_t start_webserver(void);
+void start_webserver(void);
+

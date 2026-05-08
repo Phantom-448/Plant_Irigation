@@ -7,11 +7,36 @@
 #include "esp_event.h"
 #include "esp_log.h"
 #include "nvs_flash.h"
+#include "webserver.h"
 
 #include "lwip/err.h"
 #include "lwip/sys.h"
+#include "mdns.h"
+#include "esp_log.h"
 
-static const char *TAG = "WIFI_MODULE";
+static const char *TAG = "WLAN_SERVICE";
+
+void start_mdns_service() {
+    // 1. mDNS initialisieren
+    esp_err_t err = mdns_init();
+    if (err) {
+        ESP_LOGE(TAG, "mDNS Init fehlgeschlagen: %d", err);
+        return;
+    }
+
+    // 2. Hostnamen festlegen (ergibt http://bewaesserung.local)
+    ESP_ERROR_CHECK(mdns_hostname_set("bewaesserung"));
+    
+    // 3. Instanz-Namen festlegen (für die Anzeige in Netzwerk-Tools)
+    ESP_ERROR_CHECK(mdns_instance_name_set("ESP32-C3 Balkon-Bewässerung"));
+
+    // 4. Den HTTP-Dienst bekannt geben
+    // Damit wissen andere Geräte im Netz: "Hier läuft ein Webserver auf Port 80"
+    mdns_service_add(NULL, "_http", "_tcp", 80, NULL, 0);
+
+    ESP_LOGI(TAG, "mDNS gestartet: http://bewaesserung.local");
+}
+
 
 // Wir nutzen ein Event-Group, um zu signalisieren, wenn wir verbunden sind
 static EventGroupHandle_t s_wifi_event_group;
@@ -88,6 +113,10 @@ void wifi_init_sta(void)
 
     if (bits & WIFI_CONNECTED_BIT) {
         ESP_LOGI(TAG, "Verbunden mit SSID: %s", CONFIG_ESP_WIFI_SSID);
+        // Innerhalb der WLAN-Event-Logik oder nach wifi_init_sta()
+        start_mdns_service(); // Hier aktivieren
+        start_webserver();
+
     } else if (bits & WIFI_FAIL_BIT) {
         ESP_LOGI(TAG, "Verbindung zu SSID: %s fehlgeschlagen", CONFIG_ESP_WIFI_SSID);
     }

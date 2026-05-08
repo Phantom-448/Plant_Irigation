@@ -8,10 +8,10 @@
 #include "state.h"
 #include "wlan.h"
 #include "webserver.h"
-#include "mqtt_ha.h"
-#include "mcp23017.h"
 #include "temp.h"
 #include "humid.h"
+#include "actor.h"
+
 
 static const char *TAG = "MAIN_APP";
 
@@ -49,9 +49,9 @@ void app_main(void) {
     state_init();
 
     // 3. Hardware-Peripherie initialisieren (I2C-Bus & Sensoren)[cite: 1]
-    mcp_init();          // Port-Expander für die Ventile
     temp_sensor_init();  // Interne System-Sensorik[cite: 1]
     humid_sensor_init(); // Externer Feuchtigkeitssensor
+    actor_init();        // Aktor-Initialisierung
 
     // 4. Netzwerk-Verbindungen herstellen
     wifi_init_sta();     // WLAN starten
