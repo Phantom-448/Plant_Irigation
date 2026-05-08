@@ -34,6 +34,10 @@ void sensor_reading_task(void *pvParameters) {
     }
 }
 
+static void mqtt_app_start(void) {
+    ESP_LOGI(TAG, "MQTT stub: mqtt_app_start() called, no MQTT implementation available.");
+}
+
 void app_main(void) {
     ESP_LOGI(TAG, "Starte Garten-Bewässerung auf ESP32-C3...");
 
