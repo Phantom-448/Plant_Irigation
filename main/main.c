@@ -69,9 +69,8 @@ void app_main(void) {
     wifi_init_sta();     // WLAN starten
     mqtt_app_start();    // Home Assistant MQTT-Anbindung starten
 
-    // 5. Dienste starten
-    ESP_LOGI(TAG, "Starte Webserver...");
-    start_webserver();   // Dashboard & REST-API bereitstellen
+    // 5. Webserver wird automatisch in wifi_init_sta() gestartet
+    // nach erfolgreicher WiFi-Verbindung
 
     // 6. Sensor-Lese-Task starten
     // Wir nutzen FreeRTOS, um die Sensoren im Hintergrund zu verarbeiten[cite: 1].

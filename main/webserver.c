@@ -3,10 +3,12 @@
 #include "actor.h"
 #include <esp_log.h>
 #include <esp_http_server.h>
+#include <string.h>
 
 // #include <cJSON.h>
 // Ganz oben in webserver.c hinzufügen:
 static esp_err_t watering_start_handler(httpd_req_t *req);
+static esp_err_t relay_post_handler(httpd_req_t *req);
 
 static const char *TAG = "WEB_SERVER";
 
@@ -66,6 +68,23 @@ static esp_err_t config_post_handler(httpd_req_t *req) {
     return ESP_OK;
 }
 
+static esp_err_t relay_post_handler(httpd_req_t *req) {
+    char content[64];
+    int ret = httpd_req_recv(req, content, sizeof(content));
+    if (ret <= 0) return ESP_FAIL;
+    content[ret] = '\0';
+
+    bool state = false;
+    if (strstr(content, "\"state\": true") != NULL || strstr(content, "\"state\":true") != NULL) {
+        state = true;
+    }
+
+    actor_set_relay(state);
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_sendstr(req, state ? "{\"status\":\"relay_on\"}" : "{\"status\":\"relay_off\"}");
+    return ESP_OK;
+}
+
 static esp_err_t watering_start_handler(httpd_req_t *req) {
     char buf[64];
     int ret = httpd_req_recv(req, buf, sizeof(buf));
@@ -104,7 +123,8 @@ void start_webserver(void) {
         httpd_uri_t config_uri = { .uri = "/api/config", .method = HTTP_POST, .handler = config_post_handler };
         httpd_register_uri_handler(server, &config_uri);
 
-        // webserver.c – Zeile anpassen:
+        httpd_uri_t relay_uri = { .uri = "/api/relay", .method = HTTP_POST, .handler = relay_post_handler };
+        httpd_register_uri_handler(server, &relay_uri);
 
         httpd_uri_t watering_uri = { .uri = "/api/start_watering", .method = HTTP_POST, .handler = watering_start_handler };
         httpd_register_uri_handler(server, &watering_uri);

@@ -1,33 +1,231 @@
-<div class="card shadow-sm border-0">
-    <div class="card-body">
-        <h5 class="card-title mb-4">Zeitgesteuerte Bewässerung</h5>
-        
-        <div class="mb-4">
-            <label for="durationSlider" class="form-label d-flex justify-content-between">
-                <span>Dauer:</span>
-                <span id="durationVal" class="fw-bold text-primary">5 min</span>
-            </label>
-            <input type="range" class="form-range" min="1" max="60" value="5" id="durationSlider" 
-                   oninput="document.getElementById('durationVal').innerText = this.value + ' min'">
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SmartIrrigation C3</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    
+    <style>
+        body { background-color: #f8f9fa; }
+        .gauge-container { width: 100%; height: 200px; }
+        .countdown-text { font-size: 3rem; font-family: monospace; font-weight: bold; color: #0d6efd; letter-spacing: 2px;}
+        .card { border-radius: 15px; border: none; box-shadow: 0 4px 15px rgba(0,0,0,0.05); }
+    </style>
+</head>
+<body>
+
+    <nav class="navbar navbar-dark bg-success shadow-sm mb-4">
+        <div class="container-fluid">
+            <span class="navbar-brand mb-0 h1"><i class="fa-solid fa-seedling me-2"></i>Smart Balkon</span>
+            <span class="navbar-text text-white fw-bold" id="clock">00:00</span>
+        </div>
+    </nav>
+
+    <div class="container">
+        <div class="row g-4 mb-4">
+            <div class="col-6">
+                <div class="card h-100 text-center">
+                    <div class="card-body">
+                        <h6 class="text-muted text-uppercase fw-bold"><i class="fa-solid fa-temperature-half text-danger"></i> Temperatur</h6>
+                        <div id="tempGauge" class="gauge-container"></div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-6">
+                <div class="card h-100 text-center">
+                    <div class="card-body">
+                        <h6 class="text-muted text-uppercase fw-bold"><i class="fa-solid fa-droplet text-info"></i> Luftfeuchte</h6>
+                        <div id="humidGauge" class="gauge-container"></div>
+                    </div>
+                </div>
+            </div>
         </div>
 
-        <button class="btn btn-success w-100 py-3 shadow" onclick="startWatering()">
-            🚿 Bewässerung starten
-        </button>
-    </div>
-</div>
+        <div class="row g-4 mb-4">
+            <div class="col-12">
+                <div class="card text-center">
+                    <div class="card-body py-4">
+                        <h6 class="text-muted text-uppercase fw-bold mb-3"><i class="fa-regular fa-clock"></i> Nächste Bewässerung in</h6>
+                        <div class="countdown-text" id="countdown-timer">--:--:--</div>
+                        <p class="text-muted small mt-2 mb-0">Automatischer Zyklus</p>
+                    </div>
+                </div>
+            </div>
+        </div>
 
-<script>
-async function startWatering() {
-    const minutes = document.getElementById('durationSlider').value;
-    
-    const payload = { "duration_min": parseInt(minutes) };
+        <div class="row g-4">
+            <div class="col-12 col-md-6">
+                <div class="card h-100">
+                    <div class="card-body">
+                        <h6 class="card-title text-muted fw-bold mb-4"><i class="fa-solid fa-sliders"></i> Zeit-Bewässerung</h6>
+                        
+                        <div class="mb-4">
+                            <label for="durationSlider" class="form-label d-flex justify-content-between">
+                                <span>Dauer wählen:</span>
+                                <span id="durationVal" class="fw-bold text-success">5 min</span>
+                            </label>
+                            <input type="range" class="form-range" min="1" max="60" value="5" id="durationSlider" 
+                                   oninput="document.getElementById('durationVal').innerText = this.value + ' min'">
+                        </div>
 
-    await fetch('/api/start_watering', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-    });
-    alert("Bewässerung für " + minutes + " Minuten gestartet!");
-}
-</script>
+                        <button class="btn btn-outline-success w-100 py-3 fw-bold" onclick="startTimedWatering()">
+                            <i class="fa-solid fa-play me-2"></i> Timer Starten
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-12 col-md-6">
+                <div class="card h-100">
+                    <div class="card-body d-flex flex-column justify-content-center text-center">
+                        <h6 class="card-title text-muted fw-bold mb-3">Direktsteuerung</h6>
+                        <h3 id="pump-status-text" class="mb-4">Pumpe ist AUS</h3>
+                        <button id="btn-toggle" class="btn btn-primary btn-lg w-100 py-3 fw-bold shadow-sm" onclick="toggleRelay()">
+                            <i class="fa-solid fa-power-off me-2"></i> Pumpe Umschalten
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div> 
+    </div> 
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/raphael/2.3.0/raphael.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/justgage/1.4.0/justgage.min.js"></script>
+
+    <script>
+        // --- 1. Uhren & UI Setup ---
+        setInterval(() => {
+            document.getElementById('clock').innerText = new Date().toLocaleTimeString('de-DE', {hour: '2-digit', minute:'2-digit'});
+        }, 1000);
+
+        // --- 2. Gauges Initialisieren ---
+        let tGauge = new JustGage({
+            id: "tempGauge",
+            value: 0,
+            min: -10,
+            max: 50,
+            title: "°C",
+            labelFontColor: "#333",
+            valueFontColor: "#dc3545",
+            levelColors: ["#005088", "#11caa0", "#dc3545"], // Blau -> Grün -> Rot
+            decimals: 1
+        });
+
+        let hGauge = new JustGage({
+            id: "humidGauge",
+            value: 0,
+            min: 0,
+            max: 100,
+            title: "%",
+            labelFontColor: "#333",
+            valueFontColor: "#0dcaf0",
+            levelColors: ["#dc3545", "#ffc107", "#0dcaf0"] // Rot (Trocken) -> Gelb -> Blau
+        });
+
+        // --- 3. Countdown Logik ---
+        let targetWateringTime = Date.now(); // Startwert
+
+        function updateCountdown() {
+            let now = Date.now();
+            let diff = targetWateringTime - now;
+
+            if (diff <= 0) {
+                document.getElementById('countdown-timer').innerText = "00:00:00";
+                return;
+            }
+
+            // Millisekunden in Stunden, Minuten, Sekunden umrechnen
+            let h = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+            let m = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+            let s = Math.floor((diff % (1000 * 60)) / 1000);
+
+            // Führende Nullen (z.B. 05:09:02)
+            h = (h < 10) ? "0" + h : h;
+            m = (m < 10) ? "0" + m : m;
+            s = (s < 10) ? "0" + s : s;
+
+            document.getElementById('countdown-timer').innerText = h + ":" + m + ":" + s;
+        }
+        setInterval(updateCountdown, 1000); // Jede Sekunde das UI aktualisieren
+
+        // --- 4. Daten vom ESP32 abrufen ---
+        let currentPumpState = false;
+
+        async function fetchStatus() {
+            try {
+                const response = await fetch('/api/status');
+                const data = await response.json();
+
+                // Gauges updaten mit flüssiger Animation
+                tGauge.refresh(data.temperature);
+                hGauge.refresh(data.air_humidity);
+
+                // Zielzeit für Countdown synchronisieren
+                // Der ESP sendet "minutes_to_next_water" (z.B. 120 Minuten)
+                // Wir berechnen die exakte Uhrzeit in der Zukunft, damit unser JS-Timer flüssig tickt
+                let minutesRemaining = data.minutes_to_next_water;
+                if(minutesRemaining > 0) {
+                     // Nur grob synchronisieren, damit die Sekunden nicht wild springen
+                     let calculatedTarget = Date.now() + (minutesRemaining * 60000);
+                     if(Math.abs(calculatedTarget - targetWateringTime) > 60000) {
+                         targetWateringTime = calculatedTarget;
+                     }
+                } else {
+                    targetWateringTime = Date.now(); // Steht auf 0
+                }
+
+                // Relais-Status updaten
+                updatePumpUI(data.pump_running);
+
+            } catch (err) {
+                console.error("Kann ESP32 nicht erreichen:", err);
+            }
+        }
+        // Alle 5 Sekunden neue Sensordaten holen
+        setInterval(fetchStatus, 5000);
+        setTimeout(fetchStatus, 500); // Erster Aufruf kurz nach dem Laden
+
+        // --- 5. Steuer-Befehle an ESP32 senden ---
+        async function toggleRelay() {
+            currentPumpState = !currentPumpState;
+            updatePumpUI(currentPumpState); // UI sofort ändern für snappy feeling
+
+            await fetch('/api/relay', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ state: currentPumpState })
+            });
+        }
+
+        async function startTimedWatering() {
+            const min = document.getElementById('durationSlider').value;
+            await fetch('/api/start_watering', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ duration_min: parseInt(min) })
+            });
+            alert("Timer gestartet: Bewässere für " + min + " Minuten.");
+        }
+
+        function updatePumpUI(state) {
+            currentPumpState = state;
+            const btn = document.getElementById('btn-toggle');
+            const txt = document.getElementById('pump-status-text');
+
+            if (state) {
+                btn.innerHTML = "<i class='fa-solid fa-stop me-2'></i> Pumpe Stoppen";
+                btn.classList.replace('btn-primary', 'btn-danger');
+                txt.innerText = "AKTIV";
+                txt.classList.add('text-danger');
+            } else {
+                btn.innerHTML = "<i class='fa-solid fa-power-off me-2'></i> Pumpe Einschalten";
+                btn.classList.replace('btn-danger', 'btn-primary');
+                txt.innerText = "AUS";
+                txt.classList.remove('text-danger');
+            }
+        }
+    </script>
+</body>
+</html>

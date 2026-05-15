@@ -13,6 +13,7 @@
 #include "lwip/sys.h"
 #include "mdns.h"
 #include "esp_log.h"
+#include "esp_phy.h"
 
 static const char *TAG = "WLAN_SERVICE";
 
@@ -51,6 +52,8 @@ static void event_handler(void* arg, esp_event_base_t event_base,
     if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_START) {
         esp_wifi_connect();
     } else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED) {
+        wifi_event_sta_disconnected_t* event = (wifi_event_sta_disconnected_t*) event_data;
+        ESP_LOGI(TAG, "Disconnected from AP, reason: %d", event->reason);
         if (s_retry_num < 5) { // Versuche es 5 Mal
             esp_wifi_connect();
             s_retry_num++;

@@ -5,23 +5,25 @@
 #include <esp_log.h>
 #include <stdbool.h>
 
-#define RELAY_GPIO 10
+#define MATRIX_INDICATOR_GPIO 10
 
-// Diese Funktion hast du schon
+// Diese Funktion steuert die LED-Matrix-Anzeige. Solange der Relais-Aktor
+// nicht vorhanden ist, repräsentiert diese Anzeige den Bewässerungszustand.
 void actor_set_relay(bool state) {
-    gpio_set_level(RELAY_GPIO, state ? 1 : 0);
+    gpio_set_level(MATRIX_INDICATOR_GPIO, state ? 1 : 0);
+    ESP_LOGI("ACTOR", "LED-Matrix-Indikator %s", state ? "AN" : "AUS");
 }
 
 void actor_init(void) {
     gpio_config_t io_conf = {
-        .pin_bit_mask = (1ULL << RELAY_GPIO),
+        .pin_bit_mask = (1ULL << MATRIX_INDICATOR_GPIO),
         .mode = GPIO_MODE_OUTPUT,
         .pull_up_en = GPIO_PULLUP_DISABLE,
         .pull_down_en = GPIO_PULLDOWN_DISABLE,
         .intr_type = GPIO_INTR_DISABLE
     };
     gpio_config(&io_conf);
-    actor_set_relay(false); // Start with relay off
+    actor_set_relay(false); // Start with indicator off
 }
 
 // Interner Task, der nach der Zeit ausschaltet

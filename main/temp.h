@@ -1,4 +1,4 @@
-#pragma once
+#pragma once // Verhindert, dass der Header doppelt geladen wird
 #include <stdbool.h>
 
 // Initialisiert den internen Sensor und den Filter
