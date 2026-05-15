@@ -11,9 +11,15 @@
 #include "temp.h"
 #include "humid.h"
 #include "actor.h"
-
+#include "timer.h"
 
 static const char *TAG = "MAIN_APP";
+
+static void timer_cycle_callback(void) {
+    int duration = timer_get_watering_duration_minutes();
+    ESP_LOGI(TAG, "Timer löst Bewässerung aus: Dauer %d Minuten", duration);
+    actor_start_timed_watering(duration);
+}
 
 /**
  * Sensor-Task: Liest periodisch die Daten aus.
@@ -63,6 +69,12 @@ void app_main(void) {
     ESP_LOGI(TAG, "Initialisiere Aktor...");
     actor_init();        // Aktor-Initialisierung
     ESP_LOGI(TAG, "Aktor initialisiert.");
+
+    // 3b. Timer für zyklische Bewässerung initialisieren
+    timer_init();
+    timer_register_callback(timer_cycle_callback);
+    timer_start_cycle(60, 5); // Zyklus: alle 60 Minuten, Bewässerungsdauer 5 Minuten
+    ESP_LOGI(TAG, "Zyklischer Bewässerungstimer gestartet.");
 
     // 4. Netzwerk-Verbindungen herstellen
     ESP_LOGI(TAG, "Starte WLAN-Station...");

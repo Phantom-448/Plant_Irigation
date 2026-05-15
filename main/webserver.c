@@ -1,6 +1,8 @@
+#include <stdbool.h>
 #include "state.h"
 #include "webserver.h"
 #include "actor.h"
+#include "timer.h"
 #include <esp_log.h>
 #include <esp_http_server.h>
 #include <string.h>
@@ -9,6 +11,7 @@
 // Ganz oben in webserver.c hinzufügen:
 static esp_err_t watering_start_handler(httpd_req_t *req);
 static esp_err_t relay_post_handler(httpd_req_t *req);
+static esp_err_t cycle_post_handler(httpd_req_t *req);
 
 static const char *TAG = "WEB_SERVER";
 
@@ -25,46 +28,75 @@ static esp_err_t root_get_handler(httpd_req_t *req) {
 }
 
 // 2. API Handler: Status senden (JSON)
-static esp_err_t status_get_handler(httpd_req_t *req) {
-    // cJSON *root = cJSON_CreateObject();
-    
-    // // Daten sicher aus dem globalen State holen
-    // if (xSemaphoreTake(state_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
-    //     cJSON_AddNumberToObject(root, "temperature", sys_state.current_temp);
-    //     cJSON_AddNumberToObject(root, "air_humidity", sys_state.air_humidity);
-    //     cJSON_AddNumberToObject(root, "soil_moisture_1", 62);
-    //     cJSON_AddBoolToObject(root, "pump_running", sys_state.valve_1_state);
-    //     cJSON_AddNumberToObject(root, "minutes_to_next_water", 115);
-    //     xSemaphoreGive(state_mutex);
-    // }
+static bool parse_json_int(const char *src, const char *key, int *out) {
+    const char *p = strstr(src, key);
+    if (!p) return false;
+    p = strchr(p, ':');
+    if (!p) return false;
+    p++;
+    while (*p == ' ' || *p == '"') p++;
+    *out = atoi(p);
+    return true;
+}
 
-    // const char *sys_info = cJSON_PrintUnformatted(root);
-    const char *sys_info = "{\"temperature\": 25.0, \"air_humidity\": 60.0}";
+static bool parse_json_bool(const char *src, const char *key, bool *out) {
+    const char *p = strstr(src, key);
+    if (!p) return false;
+    p = strchr(p, ':');
+    if (!p) return false;
+    p++;
+    while (*p == ' ' || *p == '"') p++;
+    if (strncmp(p, "true", 4) == 0) {
+        *out = true;
+    } else if (strncmp(p, "false", 5) == 0) {
+        *out = false;
+    } else {
+        return false;
+    }
+    return true;
+}
+
+static esp_err_t status_get_handler(httpd_req_t *req) {
+    int seconds_to_next = timer_get_seconds_to_next_cycle();
+    bool pump_running = actor_get_state();
+    int cycle_interval = timer_get_cycle_interval_minutes();
+    int watering_duration = timer_get_watering_duration_minutes();
+
+    char response[256];
+    int len = snprintf(response, sizeof(response),
+        "{\"temperature\": 25.0, \"air_humidity\": 60.0, \"soil_moisture_1\": 62, \"pump_running\": %s, \"seconds_to_next_water\": %d, \"cycle_interval_minutes\": %d, \"watering_duration_minutes\": %d}",
+        pump_running ? "true" : "false",
+        seconds_to_next,
+        cycle_interval,
+        watering_duration);
+
+    if (len < 0 || len >= sizeof(response)) {
+        return ESP_FAIL;
+    }
+
     httpd_resp_set_type(req, "application/json");
-    httpd_resp_sendstr(req, sys_info);
-    
-    // free((void*)sys_info);
-    // cJSON_Delete(root);
+    httpd_resp_send(req, response, len);
     return ESP_OK;
 }
 
 // 3. API Handler: Einstellungen empfangen (JSON)
-static esp_err_t config_post_handler(httpd_req_t *req) {
+static esp_err_t cycle_post_handler(httpd_req_t *req) {
     char content[128];
     int ret = httpd_req_recv(req, content, sizeof(content));
     if (ret <= 0) return ESP_FAIL;
     content[ret] = '\0';
 
-    // cJSON *root = cJSON_Parse(content);
-    // if (root) {
-    //     if (xSemaphoreTake(state_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
-    //         sys_state.watering_duration = cJSON_GetObjectItem(root, "watering_duration_min")->valueint;
-    //         // Logik zum Speichern im NVS (Flash) hier aufrufen
-    //         xSemaphoreGive(state_mutex);
-    //     }
-    //     cJSON_Delete(root);
-    // }
-    httpd_resp_sendstr(req, "{\"status\":\"saved\"}");
+    int interval = 0;
+    int duration = 0;
+    bool ok = false;
+
+    if (parse_json_int(content, "cycle_interval_minutes", &interval) &&
+        parse_json_int(content, "watering_duration_minutes", &duration)) {
+        ok = timer_start_cycle(interval, duration);
+    }
+
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_sendstr(req, ok ? "{\"status\":\"cycle_set\"}" : "{\"status\":\"failed\"}");
     return ESP_OK;
 }
 
@@ -75,11 +107,9 @@ static esp_err_t relay_post_handler(httpd_req_t *req) {
     content[ret] = '\0';
 
     bool state = false;
-    if (strstr(content, "\"state\": true") != NULL || strstr(content, "\"state\":true") != NULL) {
-        state = true;
+    if (parse_json_bool(content, "state", &state)) {
+        actor_set_relay(state);
     }
-
-    actor_set_relay(state);
     httpd_resp_set_type(req, "application/json");
     httpd_resp_sendstr(req, state ? "{\"status\":\"relay_on\"}" : "{\"status\":\"relay_off\"}");
     return ESP_OK;
@@ -91,17 +121,10 @@ static esp_err_t watering_start_handler(httpd_req_t *req) {
     if (ret <= 0) return ESP_FAIL;
     buf[ret] = '\0';
 
-    // cJSON *root = cJSON_Parse(buf);
-    // if (root) {
-    //     int minutes = cJSON_GetObjectItem(root, "duration_min")->valueint;
-        
-    //     // JETZT: Übergabe an die Logik
-    //     actor_start_timed_watering(minutes); 
-        
-    //     cJSON_Delete(root);
-    // }
-    // For now, start with 5 minutes
-    actor_start_timed_watering(5);
+    int minutes = 5;
+    parse_json_int(buf, "duration_min", &minutes);
+
+    actor_start_timed_watering(minutes);
     httpd_resp_sendstr(req, "{\"status\":\"started\"}");
     return ESP_OK;
 }
@@ -120,8 +143,8 @@ void start_webserver(void) {
         httpd_uri_t status = { .uri = "/api/status", .method = HTTP_GET, .handler = status_get_handler };
         httpd_register_uri_handler(server, &status);
 
-        httpd_uri_t config_uri = { .uri = "/api/config", .method = HTTP_POST, .handler = config_post_handler };
-        httpd_register_uri_handler(server, &config_uri);
+        httpd_uri_t cycle_uri = { .uri = "/api/cycle", .method = HTTP_POST, .handler = cycle_post_handler };
+        httpd_register_uri_handler(server, &cycle_uri);
 
         httpd_uri_t relay_uri = { .uri = "/api/relay", .method = HTTP_POST, .handler = relay_post_handler };
         httpd_register_uri_handler(server, &relay_uri);

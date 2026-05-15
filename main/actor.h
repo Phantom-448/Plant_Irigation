@@ -11,6 +11,7 @@
 void actor_init(void);
 void actor_set_relay(bool state);
 void actor_start_timed_watering(int minutes);
+bool actor_get_state(void);
 
 #endif // ACTOR_H
 

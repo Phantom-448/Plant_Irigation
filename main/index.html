@@ -62,16 +62,24 @@
                         <h6 class="card-title text-muted fw-bold mb-4"><i class="fa-solid fa-sliders"></i> Zeit-Bewässerung</h6>
                         
                         <div class="mb-4">
+                            <label for="cycleIntervalSlider" class="form-label d-flex justify-content-between">
+                                <span>Intervall wählen:</span>
+                                <span id="cycleIntervalVal" class="fw-bold text-success">60 min</span>
+                            </label>
+                            <input type="range" class="form-range" min="5" max="1440" value="60" id="cycleIntervalSlider" 
+                                   oninput="document.getElementById('cycleIntervalVal').innerText = this.value + ' min'">
+                        </div>
+                        <div class="mb-4">
                             <label for="durationSlider" class="form-label d-flex justify-content-between">
-                                <span>Dauer wählen:</span>
+                                <span>Bewässerungsdauer wählen:</span>
                                 <span id="durationVal" class="fw-bold text-success">5 min</span>
                             </label>
                             <input type="range" class="form-range" min="1" max="60" value="5" id="durationSlider" 
                                    oninput="document.getElementById('durationVal').innerText = this.value + ' min'">
                         </div>
 
-                        <button class="btn btn-outline-success w-100 py-3 fw-bold" onclick="startTimedWatering()">
-                            <i class="fa-solid fa-play me-2"></i> Timer Starten
+                        <button class="btn btn-outline-success w-100 py-3 fw-bold" onclick="setCycle()">
+                            <i class="fa-solid fa-play me-2"></i> Zyklus setzen
                         </button>
                     </div>
                 </div>
@@ -163,17 +171,24 @@
                 hGauge.refresh(data.air_humidity);
 
                 // Zielzeit für Countdown synchronisieren
-                // Der ESP sendet "minutes_to_next_water" (z.B. 120 Minuten)
-                // Wir berechnen die exakte Uhrzeit in der Zukunft, damit unser JS-Timer flüssig tickt
-                let minutesRemaining = data.minutes_to_next_water;
-                if(minutesRemaining > 0) {
-                     // Nur grob synchronisieren, damit die Sekunden nicht wild springen
-                     let calculatedTarget = Date.now() + (minutesRemaining * 60000);
-                     if(Math.abs(calculatedTarget - targetWateringTime) > 60000) {
-                         targetWateringTime = calculatedTarget;
-                     }
+                let secondsRemaining = data.seconds_to_next_water;
+                if (typeof secondsRemaining === 'number' && secondsRemaining > 0) {
+                    let calculatedTarget = Date.now() + (secondsRemaining * 1000);
+                    if (Math.abs(calculatedTarget - targetWateringTime) > 1000) {
+                        targetWateringTime = calculatedTarget;
+                    }
                 } else {
-                    targetWateringTime = Date.now(); // Steht auf 0
+                    targetWateringTime = Date.now();
+                }
+
+                // Cycle-Einstellungen im UI aktualisieren
+                if (typeof data.cycle_interval_minutes === 'number') {
+                    document.getElementById('cycleIntervalSlider').value = data.cycle_interval_minutes;
+                    document.getElementById('cycleIntervalVal').innerText = data.cycle_interval_minutes + ' min';
+                }
+                if (typeof data.watering_duration_minutes === 'number') {
+                    document.getElementById('durationSlider').value = data.watering_duration_minutes;
+                    document.getElementById('durationVal').innerText = data.watering_duration_minutes + ' min';
                 }
 
                 // Relais-Status updaten
@@ -207,6 +222,22 @@
                 body: JSON.stringify({ duration_min: parseInt(min) })
             });
             alert("Timer gestartet: Bewässere für " + min + " Minuten.");
+        }
+
+        async function setCycle() {
+            const interval = parseInt(document.getElementById('cycleIntervalSlider').value, 10);
+            const duration = parseInt(document.getElementById('durationSlider').value, 10);
+            const response = await fetch('/api/cycle', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ cycle_interval_minutes: interval, watering_duration_minutes: duration })
+            });
+            const data = await response.json();
+            if (data.status === 'cycle_set') {
+                alert('Zyklus gesetzt: alle ' + interval + ' Minuten, Dauer ' + duration + ' Minuten.');
+            } else {
+                alert('Zyklus konnte nicht gesetzt werden.');
+            }
         }
 
         function updatePumpUI(state) {

@@ -6,11 +6,13 @@
 #include <stdbool.h>
 
 #define MATRIX_INDICATOR_GPIO 10
+static bool s_actor_state = false;
 
 // Diese Funktion steuert die LED-Matrix-Anzeige. Solange der Relais-Aktor
 // nicht vorhanden ist, repräsentiert diese Anzeige den Bewässerungszustand.
 void actor_set_relay(bool state) {
     gpio_set_level(MATRIX_INDICATOR_GPIO, state ? 1 : 0);
+    s_actor_state = state;
     ESP_LOGI("ACTOR", "LED-Matrix-Indikator %s", state ? "AN" : "AUS");
 }
 
@@ -47,4 +49,8 @@ void watering_timer_task(void *pvParameters) {
 void actor_start_timed_watering(int minutes) {
     // Starte einen Hintergrund-Task, damit der Webserver sofort antworten kann
     xTaskCreate(watering_timer_task, "water_task", 2048, (void*)minutes, 5, NULL);
+}
+
+bool actor_get_state(void) {
+    return s_actor_state;
 }

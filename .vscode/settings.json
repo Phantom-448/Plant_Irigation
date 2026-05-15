@@ -8,12 +8,12 @@
   "idf.customExtraVars": {
     "IDF_TARGET": "esp32c3"
   },
-  "clangd.path": "/home/epr/.espressif/tools/esp-clang/esp-20.1.1_20250829/esp-clang/bin/clangd",
+  "clangd.path": "C:\\Espressif\\tools\\esp-clang\\esp-20.1.1_20250829\\esp-clang\\bin\\clangd.exe",
   "clangd.arguments": [
     "--background-index",
     "--query-driver=**",
-    "--compile-commands-dir=/home/epr/Desktop/Esp Risc-V/wps_softap_registrar/build"
+    "--compile-commands-dir=c:\\Users\\empfo\\Desktop\\Plant_Irigation\\build"
   ],
-  "idf.portWin": "COM3",
+  "idf.portWin": "COM4",
   "idf.flashType": "UART"
 }
