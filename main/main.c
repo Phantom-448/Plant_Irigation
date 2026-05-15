@@ -22,7 +22,8 @@ static const char *TAG = "MAIN_APP";
 void sensor_reading_task(void *pvParameters) {
     while (1) {
         // Temperatur vom internen System-Sensor lesen und filtern
-        float t = temp_sensor_read_filtered();
+        // ESP32C3 hat keinen internen Temp-Sensor, daher dummy Wert
+        float t = 25.0f; // temp_sensor_read_filtered();
         
         // Luftfeuchtigkeit lesen und filtern
         float h = humid_sensor_read_filtered();
@@ -48,20 +49,28 @@ void app_main(void) {
         ret = nvs_flash_init();
     }
     ESP_ERROR_CHECK(ret);
+    ESP_LOGI(TAG, "NVS erfolgreich initialisiert.");
 
     // 2. Globalen Systemstatus & Mutex initialisieren[cite: 1]
     state_init();
+    ESP_LOGI(TAG, "Systemzustand und Mutex initialisiert.");
 
     // 3. Hardware-Peripherie initialisieren (I2C-Bus & Sensoren)[cite: 1]
-    temp_sensor_init();  // Interne System-Sensorik[cite: 1]
+    // temp_sensor_init();  // Interne System-Sensorik - not supported on ESP32C3
+    ESP_LOGI(TAG, "Initialisiere Feuchtigkeitssensor...");
     humid_sensor_init(); // Externer Feuchtigkeitssensor
+    ESP_LOGI(TAG, "Feuchtigkeitssensor initialisiert.");
+    ESP_LOGI(TAG, "Initialisiere Aktor...");
     actor_init();        // Aktor-Initialisierung
+    ESP_LOGI(TAG, "Aktor initialisiert.");
 
     // 4. Netzwerk-Verbindungen herstellen
+    ESP_LOGI(TAG, "Starte WLAN-Station...");
     wifi_init_sta();     // WLAN starten
     mqtt_app_start();    // Home Assistant MQTT-Anbindung starten
 
     // 5. Dienste starten
+    ESP_LOGI(TAG, "Starte Webserver...");
     start_webserver();   // Dashboard & REST-API bereitstellen
 
     // 6. Sensor-Lese-Task starten

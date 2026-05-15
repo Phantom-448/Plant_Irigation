@@ -1,53 +1,66 @@
-| Supported Targets | ESP32 | ESP32-C2 | ESP32-C3 | ESP32-C5 | ESP32-C6 | ESP32-C61 | ESP32-S2 | ESP32-S3 |
-| ----------------- | ----- | -------- | -------- | -------- | -------- | --------- | -------- | -------- |
+# 🪴 SmartIrrigation C3 – Smarte Balkon-Bewässerung
 
-# Wi-Fi WPS Registrar Example
+Dieses Projekt realisiert eine automatisierte und fernsteuerbare Bewässerungsanlage für Balkonpflanzen. Herzstück des Systems ist ein **ESP32-C3 (RISC-V)**, der sowohl die Sensorik auswertet als auch die Aktoren (Pumpen/Ventile) über einen Port-Expander steuert.
 
-(See the README.md file in the upper level 'examples' directory for more information about examples.)
+## 🎯 Motivation
+Pflanzen auf dem Balkon sind besonders im Sommer extremen Bedingungen ausgesetzt. Durch die starke Sonneneinstrahlung untertags reicht eine einmalige Bewässerung oft nicht aus. Dieses System sorgt dafür, dass:
+* Die Feuchtigkeit kontinuierlich überwacht wird.
+* Pflanzen auch bei Abwesenheit bedarfsgerecht Wasser erhalten.
+* Die Steuerung bequem per Smartphone oder Home Assistant erfolgt.
 
-This example shows how to use WPS registrar sotAP mode in ESP. The WPS protocol simplifies the process of connecting to a Wi-Fi softAP from a station.
+---
 
-## How to use example
+## 🏗 Systemarchitektur
 
-Before project configuration and build, be sure to set the correct chip target using `idf.py set-target <chip_name>`.
+Das System ist modular aufgebaut, um eine hohe Wartbarkeit und Ausfallsicherheit zu gewährleisten. Die Software basiert auf dem **Espressif IoT Development Framework (ESP-IDF)**.
 
-### Hardware Required
+### Hardware-Komponenten
+* **Mikrocontroller:** ESP32-C3 (RISC-V Architektur).
+* **I/O-Erweiterung:** MCP23017 Port-Expander (via I2C) zur Ansteuerung von bis zu 16 Relais/Ventilen.
+* **Sensorik:**
+    * Interner System-Temperatursensor (Chip-Überwachung).
+    * Externer Luftfeuchtigkeits- und Temperatursensor (via I2C).
+    * Bodenfeuchtigkeitssensoren (kapazitiv).
+* **Aktorik:** 12V Wasserpumpe und Magnetventile, geschaltet über Relais.
 
-* A development board with ESP32/ESP32-S2/ESP32-C3/ESP32-S3 SoC (e.g., ESP32-DevKitC, ESP-WROVER-KIT, etc.)
-* A USB cable for Power supply and programming
+### Software-Module (C-Files)
+Die Logik ist in spezialisierte Module unterteilt:
+* `wlan.c`: Verwaltet die WiFi-Verbindung (Station Mode) inkl. Kconfig-Integration für sichere Credentials.
+* `state.c`: Zentrales State-Management mit **FreeRTOS Mutex** zur thread-sicheren Datenhaltung.
+* `temp.c` / `humid.c`: Sensor-Auslesung inklusive digitaler Signalverarbeitung (**IIR-Filter** zur Messwertglättung).
+* `webserver.c`: Bereitstellung eines REST-API Backends und eines Bootstrap-basierten Dashboards.
+* `mqtt_ha.c`: Integration in **Home Assistant** mittels MQTT Auto-Discovery.
+* `mcp23017.c`: Treiber für die I2C-Kommunikation mit dem Port-Expander.
 
-### Configure the project
+---
 
-Open the project configuration menu (`idf.py menuconfig`).
+## 📊 Features
 
-In the `Example Configuration` menu:
+### 📱 Web-Dashboard
+Ein mobiles Dashboard auf Basis von **Bootstrap 5**, das direkt vom ESP32-C3 ausgeliefert wird.
+* **Monitoring:** Echtzeitanzeige von Temperatur, Luft- und Bodenfeuchtigkeit.
+* **Ladebalken:** Visualisierung des Zeitraums bis zur nächsten automatischen Bewässerung.
+* **Steuerung:** Manuelles Starten/Stoppen der Pumpe sowie Schieberegler für Bewässerungsdauer und Pumpenleistung (PWM).
 
-* Use `WPS mode` to select the type.
-* Select `PBC`, `PIN` or `disable`.
+### 🏠 Home Assistant Integration
+Vollständige Einbindung in das Smart Home über den **Mosquitto MQTT Broker**:
+* Automatisches Erkennen des Geräts (Auto-Discovery).
+* Zustandsübermittlung und Fernsteuerung über die Home Assistant App.
 
-In `PBC` mode, the ESP will wait for the WPS initialization (usually by pressing WPS button on the Wi-Fi station).
+### 🛡 Signalverarbeitung & Sicherheit
+* **IIR-Filter:** Mathematische Glättung der Sensorwerte, um Fehlsteuerungen durch Rauschen zu vermeiden.
+* **NVS Integration:** Dauerhaftes Speichern von Konfigurationen (z.B. Zeitpläne) im Flash-Speicher, sodass diese nach einem Stromausfall erhalten bleiben.
 
-In `PIN` mode, the ESP will enter the WPS mode and you'll see a pin code on the terminal(If not given through user config). Enter this pin code in your station and then the ESP will connect to it.
+---
 
-(See your station's manual and configuration for WPS compatibility.)
+## 🚀 Installation & Build
 
-### Build and Flash
+### Voraussetzungen
+* Installiertes **ESP-IDF** (Espressif IDE oder VS Code Plugin).
+* Aktiver MQTT Broker (z.B. Home Assistant Add-on).
 
-Build the project and flash it to the board, then run the monitor tool to view the serial output:
-
-Run `idf.py -p PORT flash monitor` to build, flash and monitor the project.
-
-(To exit the serial monitor, type ``Ctrl-]``.)
-
-See the Getting Started Guide for all the steps to configure and use the ESP-IDF to build projects.
-
-* [ESP-IDF Getting Started Guide on ESP32](https://docs.espressif.com/projects/esp-idf/en/latest/esp32/get-started/index.html)
-* [ESP-IDF Getting Started Guide on ESP32-S2](https://docs.espressif.com/projects/esp-idf/en/latest/esp32s2/get-started/index.html)
-* [ESP-IDF Getting Started Guide on ESP32-C3](https://docs.espressif.com/projects/esp-idf/en/latest/esp32c3/get-started/index.html)
-* [ESP-IDF Getting Started Guide on ESP32-S3](https://docs.espressif.com/projects/esp-idf/en/latest/esp32s3/get-started/index.html)
-* [ESP-IDF Getting Started Guide on ESP32-C2](https://docs.espressif.com/projects/esp-idf/en/latest/esp32c2/get-started/index.html)
-
-
-## Troubleshooting
-
-For any technical queries, please open an [issue](https://github.com/espressif/esp-idf/issues) on GitHub. We will get back to you soon.
+### Build-Prozess
+1. Repository klonen.
+2. Projektkonfiguration öffnen:
+   ```bash
+   idf.py menuconfig

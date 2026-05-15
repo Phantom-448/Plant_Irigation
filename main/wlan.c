@@ -70,6 +70,7 @@ void wifi_init_sta(void)
 {
     s_wifi_event_group = xEventGroupCreate();
 
+    ESP_LOGI(TAG, "Initialisiere Netzwerk-Subsystem...");
     ESP_ERROR_CHECK(esp_netif_init());
     ESP_ERROR_CHECK(esp_event_loop_create_default());
     esp_netif_create_default_wifi_sta();
@@ -98,11 +99,12 @@ void wifi_init_sta(void)
             .threshold.authmode = WIFI_AUTH_WPA2_PSK,
         },
     };
+
+    ESP_LOGI(TAG, "Verbinde zu SSID '%s'...", CONFIG_ESP_WIFI_SSID);
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA) );
     ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_config) );
     ESP_ERROR_CHECK(esp_wifi_start() );
-
-    ESP_LOGI(TAG, "wifi_init_sta abgeschlossen.");
+    ESP_LOGI(TAG, "WiFi-Station gestartet, Verbindungsversuch läuft.");
 
     // Warten, bis die Verbindung steht oder fehlgeschlagen ist
     EventBits_t bits = xEventGroupWaitBits(s_wifi_event_group,

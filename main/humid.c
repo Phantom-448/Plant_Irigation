@@ -5,6 +5,7 @@
 #include "state.h"
 #include "freertos/FreeRTOS.h"
 #include <stdint.h>
+#include <stdlib.h>
 
 static const char *TAG = "HUMID_SENSOR";
 
@@ -36,7 +37,7 @@ float humid_sensor_read_filtered(void) {
     // i2c_master_read_from_device(...); 
     
     // Simulation eines Sensorwerts (z.B. 45%):
-    raw_humidity = 45.0f + ((float)esp_random() / (float)UINT32_MAX * 2.0f);
+    raw_humidity = 45.0f + ((float)rand() / (float)RAND_MAX * 2.0f);
 
     // Filterung anwenden, um Schwankungen zu minimieren[cite: 1]
     if (humid_filtered == 0.0f) {

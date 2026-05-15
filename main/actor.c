@@ -3,12 +3,25 @@
 #include "freertos/task.h"
 #include "driver/gpio.h"
 #include <esp_log.h>
+#include <stdbool.h>
 
 #define RELAY_GPIO 10
 
 // Diese Funktion hast du schon
 void actor_set_relay(bool state) {
     gpio_set_level(RELAY_GPIO, state ? 1 : 0);
+}
+
+void actor_init(void) {
+    gpio_config_t io_conf = {
+        .pin_bit_mask = (1ULL << RELAY_GPIO),
+        .mode = GPIO_MODE_OUTPUT,
+        .pull_up_en = GPIO_PULLUP_DISABLE,
+        .pull_down_en = GPIO_PULLDOWN_DISABLE,
+        .intr_type = GPIO_INTR_DISABLE
+    };
+    gpio_config(&io_conf);
+    actor_set_relay(false); // Start with relay off
 }
 
 // Interner Task, der nach der Zeit ausschaltet
