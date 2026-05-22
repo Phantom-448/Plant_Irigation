@@ -145,6 +145,70 @@ static esp_err_t watering_start_handler(httpd_req_t *req) {
     return ESP_OK;
 }
 
+#include <sys/param.h>
+
+// 1. Handler für die CSV-Logdatei
+static esp_err_t api_logs_handler(httpd_req_t *req) {
+    // Öffne die Log-Datei im Lese-Modus
+    FILE* f = fopen("/sdcard/logs/sensor_log.csv", "r");
+    if (f == NULL) {
+        ESP_LOGE(TAG, "Konnte Log-Datei nicht öffnen");
+        httpd_resp_send_404(req);
+        return ESP_FAIL;
+    }
+
+    httpd_resp_set_type(req, "text/csv");
+
+    // Chunked Transfer: Wir lesen immer 512 Bytes und senden sie sofort
+    char chunk[512];
+    size_t chunksize;
+    while ((chunksize = fread(chunk, 1, sizeof(chunk), f)) > 0) {
+        httpd_resp_send_chunk(req, chunk, chunksize);
+    }
+    
+    // Mit einem leeren Chunk signalisieren wir das Ende der Übertragung
+    httpd_resp_send_chunk(req, NULL, 0); 
+    fclose(f);
+    return ESP_OK;
+}
+
+// 2. Handler für Profilbilder (z.B. /img/sommer.jpg)
+static esp_err_t image_get_handler(httpd_req_t *req) {
+    char filepath[128];
+    // Dateinamen aus der URI extrahieren (alles nach dem letzten '/')
+    const char *file_name = strrchr(req->uri, '/'); 
+    
+    if (file_name) {
+        snprintf(filepath, sizeof(filepath), "/sdcard/profiles%s", file_name);
+    } else {
+        httpd_resp_send_404(req);
+        return ESP_FAIL;
+    }
+
+    FILE* f = fopen(filepath, "r");
+    if (f == NULL) {
+        // Wenn das Profilbild nicht existiert
+        httpd_resp_send_404(req);
+        return ESP_FAIL;
+    }
+    
+    // Content-Type anhand der Dateiendung setzen
+    if (strstr(filepath, ".png")) {
+        httpd_resp_set_type(req, "image/png");
+    } else {
+        httpd_resp_set_type(req, "image/jpeg");
+    }
+
+    char chunk[1024]; // Für Bilder können wir größere Chunks nehmen
+    size_t chunksize;
+    while ((chunksize = fread(chunk, 1, sizeof(chunk), f)) > 0) {
+        httpd_resp_send_chunk(req, chunk, chunksize);
+    }
+    httpd_resp_send_chunk(req, NULL, 0);
+    fclose(f);
+    return ESP_OK;
+}
+
 void start_webserver(void) {
     httpd_handle_t server = NULL;
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
@@ -173,6 +237,12 @@ void start_webserver(void) {
 
         httpd_uri_t profile_activate_uri = { .uri = "/api/profile/activate", .method = HTTP_POST, .handler = profile_activate_post_handler };
         httpd_register_uri_handler(server, &profile_activate_uri);
+
+        httpd_uri_t logs_uri = { .uri = "/api/logs", .method = HTTP_GET, .handler = api_logs_handler };
+        httpd_register_uri_handler(server, &logs_uri);
+
+        httpd_uri_t img_uri = { .uri = "/img/*", .method = HTTP_GET, .handler = image_get_handler };
+        httpd_register_uri_handler(server, &img_uri);
 
         ESP_LOGI(TAG, "HTTP-Server gestartet und Endpunkte registriert.");
     } else {
