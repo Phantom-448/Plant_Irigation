@@ -8,6 +8,7 @@
 #include "esp_log.h"
 #include "nvs_flash.h"
 #include "webserver.h"
+#include "secrets.h"
 
 #include "lwip/err.h"
 #include "lwip/sys.h"
@@ -96,14 +97,14 @@ void wifi_init_sta(void)
 
     wifi_config_t wifi_config = {
         .sta = {
-            // Diese Werte werden über menuconfig gesetzt (siehe unten)
-            .ssid = CONFIG_ESP_WIFI_SSID,
-            .password = CONFIG_ESP_WIFI_PASSWORD,
+            // Diese Werte werden aus secrets.h geladen
+            .ssid = MY_WIFI_SSID,
+            .password = MY_WIFI_PASS,
             .threshold.authmode = WIFI_AUTH_WPA2_PSK,
         },
     };
 
-    ESP_LOGI(TAG, "Verbinde zu SSID '%s'...", CONFIG_ESP_WIFI_SSID);
+    ESP_LOGI(TAG, "Verbinde zu SSID '%s'...", MY_WIFI_SSID);
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA) );
     ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_config) );
     ESP_ERROR_CHECK(esp_wifi_start() );
@@ -117,12 +118,12 @@ void wifi_init_sta(void)
             portMAX_DELAY);
 
     if (bits & WIFI_CONNECTED_BIT) {
-        ESP_LOGI(TAG, "Verbunden mit SSID: %s", CONFIG_ESP_WIFI_SSID);
+        ESP_LOGI(TAG, "Verbunden mit SSID: %s", MY_WIFI_SSID);
         // Innerhalb der WLAN-Event-Logik oder nach wifi_init_sta()
         start_mdns_service(); // Hier aktivieren
         start_webserver();
 
     } else if (bits & WIFI_FAIL_BIT) {
-        ESP_LOGI(TAG, "Verbindung zu SSID: %s fehlgeschlagen", CONFIG_ESP_WIFI_SSID);
+        ESP_LOGI(TAG, "Verbindung zu SSID: %s fehlgeschlagen", MY_WIFI_SSID);
     }
 }

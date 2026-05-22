@@ -18,3 +18,9 @@
 #define SD_LOG_DIR           SD_MOUNT_POINT "/logs"
 #define SD_PROFILE_DIR       SD_MOUNT_POINT "/profiles"
 #define SD_LOG_FILE          SD_LOG_DIR "/sensor_log.csv"
+
+// DHT22 data pin (change this to the GPIO where your DHT22 is connected)
+#define GPIO_DHT22           2
+
+// Set to 1 to use a simulated temperature sensor (no hardware). Set to 0 to use DHT22 if available.
+#define TEMP_SIMULATED       0

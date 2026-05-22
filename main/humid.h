@@ -1,4 +1,4 @@
-#pragma once // Verhindert, dass der Header doppelt geladen wird
+
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "driver/gpio.h"

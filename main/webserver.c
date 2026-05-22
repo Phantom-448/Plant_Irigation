@@ -1,6 +1,7 @@
 #include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/param.h>
 #include "state.h"
 #include "webserver.h"
 #include "actor.h"
@@ -98,7 +99,7 @@ static esp_err_t status_get_handler(httpd_req_t *req) {
 // 3. API Handler: Einstellungen empfangen (JSON)
 static esp_err_t cycle_post_handler(httpd_req_t *req) {
     char content[128];
-    int ret = httpd_req_recv(req, content, sizeof(content));
+    int ret = httpd_req_recv(req, content, sizeof(content) - 1);
     if (ret <= 0) return ESP_FAIL;
     content[ret] = '\0';
 
@@ -118,7 +119,7 @@ static esp_err_t cycle_post_handler(httpd_req_t *req) {
 
 static esp_err_t relay_post_handler(httpd_req_t *req) {
     char content[64];
-    int ret = httpd_req_recv(req, content, sizeof(content));
+    int ret = httpd_req_recv(req, content, sizeof(content) - 1);
     if (ret <= 0) return ESP_FAIL;
     content[ret] = '\0';
 
@@ -133,7 +134,7 @@ static esp_err_t relay_post_handler(httpd_req_t *req) {
 
 static esp_err_t watering_start_handler(httpd_req_t *req) {
     char buf[64];
-    int ret = httpd_req_recv(req, buf, sizeof(buf));
+    int ret = httpd_req_recv(req, buf, sizeof(buf) - 1);
     if (ret <= 0) return ESP_FAIL;
     buf[ret] = '\0';
 
@@ -255,11 +256,24 @@ static esp_err_t profiles_list_get_handler(httpd_req_t *req) {
     ProfileList_t *list = get_available_profiles();
     
     cJSON *root = cJSON_CreateArray();
+    if (!root) {
+        httpd_resp_set_type(req, "application/json");
+        httpd_resp_sendstr(req, "{\"error\":\"allocation_failed\"}");
+        return ESP_FAIL;
+    }
+
     for (int i = 0; i < list->count; i++) {
         cJSON_AddItemToArray(root, cJSON_CreateString(list->names[i]));
     }
 
     const char *json_str = cJSON_PrintUnformatted(root);
+    if (!json_str) {
+        cJSON_Delete(root);
+        httpd_resp_set_type(req, "application/json");
+        httpd_resp_sendstr(req, "{\"error\":\"allocation_failed\"}");
+        return ESP_FAIL;
+    }
+
     httpd_resp_set_type(req, "application/json");
     httpd_resp_sendstr(req, json_str);
     

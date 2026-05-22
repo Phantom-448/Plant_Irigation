@@ -5,6 +5,7 @@
 #include "freertos/task.h"
 #include <time.h>
 #include <stdio.h>
+#include "cjson.h"
 
 #include "state.h"
 #include "wlan.h"
@@ -82,10 +83,6 @@ void sensor_reading_task(void *pvParameters) {
     }
 }
 
-static void mqtt_app_start(void) {
-    ESP_LOGI(TAG, "MQTT stub: mqtt_app_start() called, no MQTT implementation available.");
-}
-
 
 void app_main(void) {
     ESP_LOGI(TAG, "Starte Garten-Bewässerung auf ESP32-C3...");
@@ -126,7 +123,7 @@ void app_main(void) {
     // 4. Netzwerk-Verbindungen herstellen
     ESP_LOGI(TAG, "Starte WLAN-Station...");
     wifi_init_sta();     // WLAN starten
-    mqtt_app_start();    // Home Assistant MQTT-Anbindung starten
+
 
     // 5. Webserver wird automatisch in wifi_init_sta() gestartet
     // nach erfolgreicher WiFi-Verbindung

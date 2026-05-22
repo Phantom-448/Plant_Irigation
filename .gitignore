@@ -81,3 +81,7 @@ Desktop.ini
 
 *.vscode/
 *.devcontainer/ # If using Dev Containers in VS Code
+
+secrets.h # Local configuration file with sensitive data, not to be shared
+# Lokale Passwörter und Configs ignorieren
+main/secrets.h
