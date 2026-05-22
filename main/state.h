@@ -17,7 +17,6 @@ typedef struct {
 // Deine bestehende Struktur erweitern:
 typedef struct {
     bool valve_1_state;
-    bool valve_2_state;
     int watering_duration;
     float current_temp;
     float air_humidity;

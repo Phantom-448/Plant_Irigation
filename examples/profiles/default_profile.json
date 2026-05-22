@@ -1,0 +1,7 @@
+{
+  "check_interval_minutes": 60,
+  "base_watering_minutes": 5,
+  "min_soil_moisture_percent": 40,
+  "hot_temp_threshold": 30.0,
+  "hot_temp_extra_minutes": 3
+}

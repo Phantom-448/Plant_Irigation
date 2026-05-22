@@ -36,12 +36,6 @@ Die Hardware-Pins sind zentral in `main/pin_config.h` abgelegt. Dort findest du 
 
 Diese Pfade werden im SD-Modul verwendet, damit alle Dateizugriffe konsistent bleiben.
 
-### Warum `pin_config.h`?
-
-Mit einer zentralen Pin-Definition kannst du:
-* Änderungen am Board-Pinout einmalig durchführen
-* unterschiedliche Module sauber halten
-* den Code einfacher auf andere Hardware anzupassen
 
 ## 🧱 Software-Architektur
 
@@ -92,14 +86,14 @@ Alle gemeinsamen Daten werden in `sys_state` gehalten und nur nach erfolgreichem
 
 ### Build
 ```bash
-cd "wps_softap_registrar"
+cd "Smart_Plant_Irigation"
 idf.py menuconfig
 idf.py build
 idf.py flash
 ```
 
 ### Laufend
-* Das Web-Dashboard ist nach dem Start über die IP-Adresse des ESP erreichbar
+* Das Web-Dashboard ist nach dem Start über die IP-Adresse des ESP erreichbar oder auch über bewaesserung.local
 * Profile werden beim Start von der SD-Karte eingelesen
 * Logs werden periodisch in `sensor_log.csv` geschrieben
 
