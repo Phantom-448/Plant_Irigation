@@ -16,14 +16,15 @@
         
         /* Das neue Navbar-Design mit Hintergrundbild von der SD-Karte */
         .navbar-custom {
-            background-image: linear-gradient(rgba(0, 0, 0, 0.4), rgba(0, 0, 0, 0.4)), url('/img/header.jpg');
-            background-size: cover;
-            background-position: center;
-            border-bottom-left-radius: 10px;
-            border-bottom-right-radius: 10px;
+            background-color: #198754; /* Bootstrap success-grün */
+            background-image: none;    /* Entfernt eventuelle Verläufe */
+            transition: background-image 0.3s ease; /* Weicher Übergang, falls ein Bild geladen wird */
         }
     </style>
 </head>
+<div id="profileImageContainer" style="width: 100px; height: 100px; display: inline-block;">
+    <img id="profileImage" src="/img/default_profile.jpg" style="width: 100%; height: 100%; object-fit: cover;">
+</div>
 <body>
 
     <nav class="navbar navbar-dark navbar-custom shadow-sm mb-4 py-3">
@@ -304,10 +305,11 @@
 
             // 1. Profilbild aktualisieren
             const imgEl = document.getElementById('profileImage');
+            const containerEl = document.getElementById('profileImageContainer');
             imgEl.src = `/img/${selectedName}.jpg`;
             imgEl.style.display = 'inline-block';
             imgEl.onerror = function() {
-                imgEl.style.display = 'none'; // Verbergen, falls kein Bild existiert
+                containerEl.innerHTML = `<span style="font-size: 5rem; line-height: 100px;">🪴</span>`;
             };
 
             // 2. NEU: Navbar-Hintergrundbild dynamisch anpassen

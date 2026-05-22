@@ -188,26 +188,32 @@ static esp_err_t api_logs_handler(httpd_req_t *req) {
     return serve_file_from_sd(req, filepath, "text/csv");
 }
 
-// 2. Handler für Profilbilder (z.B. /img/sommer.jpg)
 static esp_err_t image_get_handler(httpd_req_t *req) {
-    char filepath[128];
-    // Dateinamen aus der URI extrahieren (alles nach dem letzten '/')
-    const char *file_name = strrchr(req->uri, '/'); 
+    // Der URI ist z.B. "/img/default_profile.jpg"
+    // Dein Code muss das "/img/" abschneiden und "/sdcard/profiles/" davor hängen!
     
-    if (file_name) {
-        snprintf(filepath, sizeof(filepath), "%s/profiles%s", SD_MOUNT_POINT, file_name);
-    } else {
+    char filepath[128];
+    // Extrahiere den Dateinamen nach "/img/"
+    const char *filename = req->uri + 5; // Versatz um 5 Zeichen wegen "/img/"
+    
+    snprintf(filepath, sizeof(filepath), "/sdcard/profiles/%s", filename);
+    
+    ESP_LOGI(TAG, "Suche Bild auf SD: %s", filepath);
+    
+    FILE* f = fopen(filepath, "r");
+    if (f == NULL) {
+        ESP_LOGW(TAG, "Bild nicht gefunden: %s", filepath);
         httpd_resp_send_404(req);
-        return ESP_FAIL;
+        return ESP_OK; // Verhindert den Absturz, aber liefert eben 404
     }
+    fclose(f);
 
     return serve_file_from_sd(req, filepath, strstr(filepath, ".png") ? "image/png" : "image/jpeg");
 }
 
 static esp_err_t favicon_get_handler(httpd_req_t *req) {
-    const char *filepath = SD_MOUNT_POINT "/favicon.ico";
-    ESP_LOGI(TAG, "Favicon-Anfrage: %s", filepath);
-    return serve_file_from_sd(req, filepath, "image/x-icon");
+
+    return serve_file_from_sd(req, "/sdcard/favicon.ico", "image/x-icon");
 }
 
 static esp_err_t sdcard_test_handler(httpd_req_t *req) {

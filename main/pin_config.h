@@ -1,26 +1,28 @@
 #pragma once
 
-// GPIO definitions for the ESP32-C3 smart balcony irrigation system
-#define GPIO_RELAY           10
+// --- AKTUELLE HARDWARE VERKABELUNG ---
 
-// SPI pins for the SD-card module
-#define GPIO_SD_MISO         6 
-#define GPIO_SD_MOSI         5
-#define GPIO_SD_SCLK         4
-#define GPIO_SD_CS           7
+// SPI pins für das SD-Karten-Modul (gemäß Schematic & Jumper-Konfiguration)
+#define GPIO_SD_MOSI         4
+#define GPIO_SD_MISO         7
+#define GPIO_SD_SCLK         10
+#define GPIO_SD_CS           0    
 
-// I2C pins for external sensor hardware (optional/test setup)
-#define GPIO_I2C_SDA         8
-#define GPIO_I2C_SCL         9
+// I2C pins für externen Feuchtigkeitssensor (oder andere I2C Geräte)
+#define GPIO_I2C_SDA         5
+#define GPIO_I2C_SCL         6
+
+// GPIO für das Relais (Wasserpumpe) - Wir nehmen Pin 8 als Ersatz, da 10 belegt ist
+#define GPIO_RELAY           8   
+
+// DHT22 Pin (falls angeschlossen)
+#define GPIO_DHT22           2
 
 // SD card filesystem mount points and directories
 #define SD_MOUNT_POINT       "/sdcard"
 #define SD_LOG_DIR           SD_MOUNT_POINT "/logs"
 #define SD_PROFILE_DIR       SD_MOUNT_POINT "/profiles"
 #define SD_LOG_FILE          SD_LOG_DIR "/sensor_log.csv"
-
-// DHT22 data pin (change this to the GPIO where your DHT22 is connected)
-#define GPIO_DHT22           2
 
 // Set to 1 to use a simulated temperature sensor (no hardware). Set to 0 to use DHT22 if available.
 #define TEMP_SIMULATED       0

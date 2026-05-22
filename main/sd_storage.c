@@ -7,14 +7,17 @@
 #include "sdmmc_cmd.h"
 #include "driver/sdspi_host.h"
 #include "driver/spi_master.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 #include "sd_storage.h"
 #include "pin_config.h"
+#include <stdio.h>
 
 static const char *TAG = "SD_CARD";
+static sdmmc_card_t *card = NULL;
+static bool sd_bus_initialized = false;
+static sdmmc_host_t host = {0};
 
-
-// Globale Variable für die Karte
-sdmmc_card_t *card;
 static bool ensure_directory(const char *path) {
     struct stat st;
     if (stat(path, &st) == 0) {
@@ -30,31 +33,13 @@ static bool ensure_directory(const char *path) {
     return true;
 }
 
-void init_sd_card(void) {
-    esp_err_t ret;
+static bool init_spi_bus(void) {
+    if (sd_bus_initialized) {
+        return true;
+    }
 
-    // --- NEU: Interne Pull-Ups erzwingen, um Störungen auf den Kabeln zu filtern ---
-    gpio_set_pull_mode(GPIO_SD_MOSI, GPIO_PULLUP_ONLY);
-    gpio_set_pull_mode(GPIO_SD_MISO, GPIO_PULLUP_ONLY);
-    gpio_set_pull_mode(GPIO_SD_SCLK, GPIO_PULLUP_ONLY);
-    gpio_set_pull_mode(GPIO_SD_CS, GPIO_PULLUP_ONLY);
-    // --------------------------------------------------------------------------------
-
-    // 1. Konfiguration des VFS (Virtual File System)
-    esp_vfs_fat_sdmmc_mount_config_t mount_config = {
-        .format_if_mount_failed = true, // Formatiert die Karte, wenn sie komplett leer ist
-        .max_files = 5,                 // Max. gleichzeitig geöffnete Dateien
-        .allocation_unit_size = 16 * 1024
-    };
-
-    ESP_LOGI(TAG, "Initialisiere SD-Karte über SPI...");
-
-    // 2. SPI-Bus konfigurieren
-    sdmmc_host_t host = SDSPI_HOST_DEFAULT();
-    
-    // --- NEU: Drosselung der SPI-Frequenz für stabilere Datenübertragung ---
-    host.max_freq_khz = 400; // Sehr langsamer, aber sicherer Startwert (400 kHz)
-    // -----------------------------------------------------------------------
+    host = (sdmmc_host_t)SDSPI_HOST_DEFAULT();
+    host.max_freq_khz = 20000;
 
     spi_bus_config_t bus_cfg = {
         .mosi_io_num = GPIO_SD_MOSI,
@@ -65,34 +50,75 @@ void init_sd_card(void) {
         .max_transfer_sz = 4000,
     };
 
-    ret = spi_bus_initialize(host.slot, &bus_cfg, SDSPI_DEFAULT_DMA);
+    esp_err_t ret = spi_bus_initialize(host.slot, &bus_cfg, SDSPI_DEFAULT_DMA);
     if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Fehler bei der Initialisierung des SPI-Busses.");
-        return;
+        ESP_LOGE(TAG, "Fehler bei der Initialisierung des SPI-Busses: %s", esp_err_to_name(ret));
+        return false;
     }
 
-    // 3. SD-Karten-Slot konfigurieren
+    sd_bus_initialized = true;
+    return true;
+}
+
+static bool mount_sd_card_internal(void) {
+    if (!init_spi_bus()) {
+        return false;
+    }
+
+    if (card != NULL) {
+        return true;
+    }
+
+    esp_vfs_fat_sdmmc_mount_config_t mount_config = {
+        .format_if_mount_failed = true,
+        .max_files = 5,
+        .allocation_unit_size = 16 * 1024,
+    };
+
     sdspi_device_config_t slot_config = SDSPI_DEVICE_CONFIG_DEFAULT();
     slot_config.gpio_cs = GPIO_SD_CS;
     slot_config.host_id = host.slot;
 
-    // 4. Dateisystem mounten
-    ret = esp_vfs_fat_sdspi_mount(SD_MOUNT_POINT, &host, &slot_config, &mount_config, &card);
-
+    ESP_LOGI(TAG, "Versuche SD-Karte zu mounten...");
+    esp_err_t ret = esp_vfs_fat_sdspi_mount(SD_MOUNT_POINT, &host, &slot_config, &mount_config, &card);
     if (ret != ESP_OK) {
         if (ret == ESP_FAIL) {
             ESP_LOGE(TAG, "Mounten der SD-Karte fehlgeschlagen (Konnte Dateisystem nicht lesen).");
         } else {
             ESP_LOGE(TAG, "Mounten der SD-Karte fehlgeschlagen (Code %s)", esp_err_to_name(ret));
         }
-        return;
+        card = NULL;
+        return false;
     }
 
     ESP_LOGI(TAG, "SD-Karte erfolgreich gemountet.");
-
-    // Ordner-Struktur sicherstellen
     ensure_directory(SD_LOG_DIR);
     ensure_directory(SD_PROFILE_DIR);
+    return true;
+}
+
+static void unmount_sd_card_internal(void) {
+    if (card == NULL) {
+        return;
+    }
+
+    esp_err_t ret = esp_vfs_fat_sdcard_unmount(SD_MOUNT_POINT, card);
+    if (ret != ESP_OK) {
+        ESP_LOGW(TAG, "Fehler beim Unmounten der SD-Karte: %s", esp_err_to_name(ret));
+    } else {
+        ESP_LOGI(TAG, "SD-Karte unmounted.");
+    }
+    card = NULL;
+}
+
+void init_sd_card(void) {
+    gpio_set_pull_mode(GPIO_SD_MOSI, GPIO_PULLUP_ONLY);
+    gpio_set_pull_mode(GPIO_SD_MISO, GPIO_PULLUP_ONLY);
+    gpio_set_pull_mode(GPIO_SD_SCLK, GPIO_PULLUP_ONLY);
+    gpio_set_pull_mode(GPIO_SD_CS, GPIO_PULLUP_ONLY);
+
+    ESP_LOGI(TAG, "Initialisiere SD-Karte über SPI...");
+    mount_sd_card_internal();
 }
 
 bool sd_card_ready(void) {
@@ -149,6 +175,28 @@ bool sd_card_self_test(void) {
 
     ESP_LOGI(TAG, "SD-Karten-Selbsttest bestanden.");
     return true;
+}
+
+void sd_card_monitor_task(void *pvParameters) {
+    while (1) {
+        if (card != NULL) {
+            struct stat st;
+            if (stat(SD_MOUNT_POINT, &st) != 0) {
+                ESP_LOGW(TAG, "SD-Mount nicht mehr erreichbar, versuche Unmount und erneuten Mount.");
+                unmount_sd_card_internal();
+            }
+        }
+
+        if (card == NULL) {
+            if (mount_sd_card_internal()) {
+                ESP_LOGI(TAG, "SD-Karte erfolgreich nach Einstecken gemountet.");
+            } else {
+                ESP_LOGD(TAG, "SD-Karte nicht verfügbar. Prüfe erneut in 5 Sekunden.");
+            }
+        }
+
+        vTaskDelay(pdMS_TO_TICKS(5000));
+    }
 }
 
 // Ein Profil speichern (z.B. "sommer.json")

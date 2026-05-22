@@ -101,6 +101,8 @@ void app_main(void) {
     ESP_LOGI(TAG, "Systemzustand und Mutex initialisiert.");
 
     init_sd_card();      // SD-Karte initialisieren
+    xTaskCreate(sd_card_monitor_task, "sd_monitor", 4096, NULL, 5, NULL);
+
     if (sd_card_self_test()) {
         ESP_LOGI(TAG, "SD-Karten-Selbsttest erfolgreich.");
     } else {
