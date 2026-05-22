@@ -128,3 +128,44 @@ void timer_register_callback(void (*callback)(void))
 {
     s_cycle_callback = callback;
 }
+
+// --- LOGGING TIMER BEREICH ---
+
+static TaskHandle_t s_logging_task = NULL;
+static void (*s_logging_callback)(void) = NULL;
+
+static void logging_timer_task(void *pvParameters)
+{
+    // Exakt 15 Minuten in Millisekunden
+    const TickType_t xFrequency = pdMS_TO_TICKS(15 * 60 * 1000); 
+    TickType_t xLastWakeTime = xTaskGetTickCount();
+
+    ESP_LOGI(TAG, "Logging-Timer Task gestartet (15 Min Intervall)");
+
+    while (1) {
+        // Pausiert den Task präzise für 15 Minuten
+        vTaskDelayUntil(&xLastWakeTime, xFrequency);
+
+        ESP_LOGD(TAG, "15 Minuten erreicht, rufe Logging-Callback auf");
+        
+        if (s_logging_callback) {
+            s_logging_callback();
+        } else {
+            ESP_LOGW(TAG, "Kein Logging-Callback registriert!");
+        }
+    }
+}
+
+void timer_start_logging(void (*callback)(void))
+{
+    s_logging_callback = callback;
+    
+    if (s_logging_task == NULL) {
+        BaseType_t result = xTaskCreate(logging_timer_task, "logging_task", 3072, NULL, 4, &s_logging_task);
+        if (result != pdPASS) {
+            ESP_LOGE(TAG, "Logging-Timer Task konnte nicht gestartet werden");
+        }
+    } else {
+        ESP_LOGW(TAG, "Logging-Timer läuft bereits.");
+    }
+}

@@ -3,6 +3,8 @@
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include <time.h>
+#include <stdio.h>
 
 // Deine Module
 #include "state.h"
@@ -12,8 +14,11 @@
 #include "humid.h"
 #include "actor.h"
 #include "timer.h"
+#include "sd_storage.h"
 
 static const char *TAG = "MAIN_APP";
+
+
 
 static void timer_cycle_callback(void) {
     int duration = timer_get_watering_duration_minutes();
@@ -43,6 +48,54 @@ void sensor_reading_task(void *pvParameters) {
 
 static void mqtt_app_start(void) {
     ESP_LOGI(TAG, "MQTT stub: mqtt_app_start() called, no MQTT implementation available.");
+}
+
+void log_sensor_data_callback(void) {
+    // Zeitstempel generieren
+    time_t now;
+    struct tm timeinfo;
+    time(&now);
+    localtime_r(&now, &timeinfo);
+    
+    char time_str[64];
+    strftime(time_str, sizeof(time_str), "%Y-%m-%d %H:%M:%S", &timeinfo);
+
+    char log_buffer[128];
+    
+    // Daten sicher aus dem globalen State holen
+    if (xSemaphoreTake(state_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+        snprintf(log_buffer, sizeof(log_buffer), "%s,%.1f,%.1f,%d,%d",
+                 time_str,
+                 sys_state.current_temp,
+                 sys_state.air_humidity,
+                 sys_state.soil_moisture_1,
+                 sys_state.valve_1_state ? 1 : 0);
+                 
+        xSemaphoreGive(state_mutex);
+        
+        // Auf die SD-Karte schreiben
+        sd_write_log(log_buffer);
+        ESP_LOGI("MAIN", "Automatischer Log geschrieben: %s", log_buffer);
+    }
+}
+
+
+// Funktion zum Schreiben des Logs, die von main.c aufgerufen wird
+void sd_write_log(const char* log_line) {
+    // "a" steht für Append. Neue Daten werden unten angehängt.
+    // Wenn die Datei nicht existiert, wird sie automatisch erstellt.
+    FILE* f = fopen("/sdcard/logs/sensor_log.csv", "a");
+    
+    if (f == NULL) {
+        ESP_LOGE(TAG, "Fehler: Konnte Log-Datei nicht öffnen!");
+        return;
+    }
+    
+    // Daten in die Datei schreiben und Zeilenumbruch anfügen
+    fprintf(f, "%s\n", log_line);
+    
+    // WICHTIG: Sofort schließen, um Datenverlust bei Stromausfall zu verhindern
+    fclose(f); 
 }
 
 void app_main(void) {

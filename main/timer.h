@@ -35,6 +35,9 @@ int timer_get_watering_duration_minutes(void);
 // The callback should start the actual watering action.
 void timer_register_callback(void (*callback)(void));
 
+// --- Neue Logging-Funktionen ---
+void timer_start_logging(void (*callback)(void));
+
 #ifdef __cplusplus
 }
 #endif
