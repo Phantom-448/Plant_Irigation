@@ -7,44 +7,33 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    
     <style>
         body { background-color: #f8f9fa; }
         .gauge-container { width: 100%; height: 200px; }
         .countdown-text { font-size: 3rem; font-family: monospace; font-weight: bold; color: #0d6efd; letter-spacing: 2px;}
         .card { border-radius: 15px; border: none; box-shadow: 0 4px 15px rgba(0,0,0,0.05); }
+        
+        /* Das neue Navbar-Design mit Hintergrundbild von der SD-Karte */
         .navbar-custom {
-            /* Der dunkle Schleier (0.4) und der Pfad zu deinem Bild */
             background-image: linear-gradient(rgba(0, 0, 0, 0.4), rgba(0, 0, 0, 0.4)), url('/img/header.jpg');
-            background-size: cover;      /* Bild füllt den ganzen Platz aus */
-            background-position: center; /* Bild wird zentriert */
-            border-bottom-left-radius: 10px; /* Optional: Runde Ecken unten */
+            background-size: cover;
+            background-position: center;
+            border-bottom-left-radius: 10px;
             border-bottom-right-radius: 10px;
         }
     </style>
 </head>
 <body>
 
-    <nav class="navbar navbar-dark navbar-custom shadow-sm mb-4">
+    <nav class="navbar navbar-dark navbar-custom shadow-sm mb-4 py-3">
         <div class="container-fluid">
             <span class="navbar-brand mb-0 h1"><i class="fa-solid fa-seedling me-2"></i>Smart Balkon</span>
             <span class="navbar-text text-white fw-bold" id="clock">00:00</span>
         </div>
     </nav>
-    <div class="text-center mb-3">
-        <img id="profileImage" src="" alt="Profilbild" class="img-fluid rounded shadow-sm" style="max-height: 200px; display: none;">
-    </div>
 
-    <div class="row mt-4">
-        <div class="col-12">
-            <div class="card shadow-sm border-0">
-                <div class="card-body">
-                    <h5 class="card-title text-muted"><i class="fa-solid fa-chart-line"></i> Historie (Letzte Messungen)</h5>
-                    <canvas id="logChart" style="max-height: 300px;"></canvas>
-                </div>
-            </div>
-        </div>
-    </div>
-    <div class="container">
+    <div class="container pb-5">
         <div class="row g-4 mb-4">
             <div class="col-6">
                 <div class="card h-100 text-center">
@@ -75,47 +64,24 @@
                 </div>
             </div>
         </div>
-        <div class="card shadow-sm border-0 mb-4">
-            <div class="card-body">
-                <h6 class="card-title text-muted fw-bold mb-3"><i class="fa-solid fa-file-lines"></i> Bewässerungs-Profil</h6>
-                
-                <div class="input-group">
-                    <select class="form-select" id="profileSelect">
-                        <option selected disabled>Lade Profile...</option>
-                    </select>
-                    <button class="btn btn-primary fw-bold" onclick="activateSelectedProfile()">
-                        Aktivieren
-                    </button>
-                </div>
-                <div class="form-text mt-2" id="activeProfileText">Aktuell geladen: Unbekannt</div>
-            </div>
-        </div>
 
-        <div class="row g-4">
+        <div class="row g-4 mb-4">
             <div class="col-12 col-md-6">
                 <div class="card h-100">
                     <div class="card-body">
                         <h6 class="card-title text-muted fw-bold mb-4"><i class="fa-solid fa-sliders"></i> Zeit-Bewässerung</h6>
                         
                         <div class="mb-4">
-                            <label for="cycleIntervalSlider" class="form-label d-flex justify-content-between">
-                                <span>Intervall wählen:</span>
-                                <span id="cycleIntervalVal" class="fw-bold text-success">60 min</span>
-                            </label>
-                            <input type="range" class="form-range" min="5" max="1440" value="60" id="cycleIntervalSlider" 
-                                   oninput="document.getElementById('cycleIntervalVal').innerText = this.value + ' min'">
-                        </div>
-                        <div class="mb-4">
                             <label for="durationSlider" class="form-label d-flex justify-content-between">
-                                <span>Bewässerungsdauer wählen:</span>
+                                <span>Dauer wählen:</span>
                                 <span id="durationVal" class="fw-bold text-success">5 min</span>
                             </label>
                             <input type="range" class="form-range" min="1" max="60" value="5" id="durationSlider" 
                                    oninput="document.getElementById('durationVal').innerText = this.value + ' min'">
                         </div>
 
-                        <button class="btn btn-outline-success w-100 py-3 fw-bold" onclick="setCycle()">
-                            <i class="fa-solid fa-play me-2"></i> Zyklus setzen
+                        <button class="btn btn-outline-success w-100 py-3 fw-bold" onclick="startTimedWatering()">
+                            <i class="fa-solid fa-play me-2"></i> Timer Starten
                         </button>
                     </div>
                 </div>
@@ -133,6 +99,50 @@
                 </div>
             </div>
         </div> 
+
+        <div class="row g-4 mb-4">
+            <div class="col-12">
+                <div class="card shadow-sm border-0">
+                    <div class="card-body">
+                        <h6 class="card-title text-muted fw-bold mb-3"><i class="fa-solid fa-file-lines"></i> Bewässerungs-Profil</h6>
+                        
+                        <div class="text-center mb-4">
+                            <img id="profileImage" src="" alt="Profilbild" class="img-fluid rounded shadow-sm" style="max-height: 200px; display: none; object-fit: cover;">
+                        </div>
+
+                        <div class="input-group">
+                            <select class="form-select" id="profileSelect">
+                                <option selected disabled>Lade Profile...</option>
+                            </select>
+                            <button class="btn btn-primary fw-bold" onclick="activateSelectedProfile()">
+                                Aktivieren
+                            </button>
+                        </div>
+                        <div class="form-text mt-2" id="activeProfileText">Aktuell geladen: Unbekannt</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row mt-4">
+            <div class="col-12">
+                <div class="card shadow-sm border-0">
+                    <div class="card-body">
+                        <h5 class="card-title text-muted d-flex justify-content-between align-items-center mb-3">
+                            <span><i class="fa-solid fa-chart-line"></i> Historie</span>
+                            <button class="btn btn-sm btn-outline-secondary" onclick="loadAndDrawChart()" title="Daten neu laden">
+                                <i class="fa-solid fa-rotate-right"></i>
+                            </button>
+                        </h5>
+                        
+                        <div style="position: relative; height: 300px; width: 100%;">
+                            <canvas id="logChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
     </div> 
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/raphael/2.3.0/raphael.min.js"></script>
@@ -153,7 +163,7 @@
             title: "°C",
             labelFontColor: "#333",
             valueFontColor: "#dc3545",
-            levelColors: ["#005088", "#11caa0", "#dc3545"], // Blau -> Grün -> Rot
+            levelColors: ["#005088", "#11caa0", "#dc3545"],
             decimals: 1
         });
 
@@ -165,11 +175,11 @@
             title: "%",
             labelFontColor: "#333",
             valueFontColor: "#0dcaf0",
-            levelColors: ["#dc3545", "#ffc107", "#0dcaf0"] // Rot (Trocken) -> Gelb -> Blau
+            levelColors: ["#dc3545", "#ffc107", "#0dcaf0"]
         });
 
         // --- 3. Countdown Logik ---
-        let targetWateringTime = Date.now(); // Startwert
+        let targetWateringTime = Date.now();
 
         function updateCountdown() {
             let now = Date.now();
@@ -180,21 +190,19 @@
                 return;
             }
 
-            // Millisekunden in Stunden, Minuten, Sekunden umrechnen
             let h = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
             let m = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
             let s = Math.floor((diff % (1000 * 60)) / 1000);
 
-            // Führende Nullen (z.B. 05:09:02)
             h = (h < 10) ? "0" + h : h;
             m = (m < 10) ? "0" + m : m;
             s = (s < 10) ? "0" + s : s;
 
             document.getElementById('countdown-timer').innerText = h + ":" + m + ":" + s;
         }
-        setInterval(updateCountdown, 1000); // Jede Sekunde das UI aktualisieren
+        setInterval(updateCountdown, 1000);
 
-        // --- 4. Daten vom ESP32 abrufen ---
+        // --- 4. Live-Daten (Status) vom ESP32 abrufen ---
         let currentPumpState = false;
 
         async function fetchStatus() {
@@ -202,46 +210,31 @@
                 const response = await fetch('/api/status');
                 const data = await response.json();
 
-                // Gauges updaten mit flüssiger Animation
                 tGauge.refresh(data.temperature);
                 hGauge.refresh(data.air_humidity);
 
-                // Zielzeit für Countdown synchronisieren
-                let secondsRemaining = data.seconds_to_next_water;
-                if (typeof secondsRemaining === 'number' && secondsRemaining > 0) {
-                    let calculatedTarget = Date.now() + (secondsRemaining * 1000);
-                    if (Math.abs(calculatedTarget - targetWateringTime) > 1000) {
-                        targetWateringTime = calculatedTarget;
-                    }
+                let minutesRemaining = data.minutes_to_next_water;
+                if(minutesRemaining > 0) {
+                     let calculatedTarget = Date.now() + (minutesRemaining * 60000);
+                     if(Math.abs(calculatedTarget - targetWateringTime) > 60000) {
+                         targetWateringTime = calculatedTarget;
+                     }
                 } else {
                     targetWateringTime = Date.now();
                 }
 
-                // Cycle-Einstellungen im UI aktualisieren
-                if (typeof data.cycle_interval_minutes === 'number') {
-                    document.getElementById('cycleIntervalSlider').value = data.cycle_interval_minutes;
-                    document.getElementById('cycleIntervalVal').innerText = data.cycle_interval_minutes + ' min';
-                }
-                if (typeof data.watering_duration_minutes === 'number') {
-                    document.getElementById('durationSlider').value = data.watering_duration_minutes;
-                    document.getElementById('durationVal').innerText = data.watering_duration_minutes + ' min';
-                }
-
-                // Relais-Status updaten
                 updatePumpUI(data.pump_running);
-
             } catch (err) {
-                console.error("Kann ESP32 nicht erreichen:", err);
+                console.error("ESP32 nicht erreichbar", err);
             }
         }
-        // Alle 5 Sekunden neue Sensordaten holen
         setInterval(fetchStatus, 5000);
-        setTimeout(fetchStatus, 500); // Erster Aufruf kurz nach dem Laden
+        setTimeout(fetchStatus, 500);
 
-        // --- 5. Steuer-Befehle an ESP32 senden ---
+        // --- 5. Steuer-Befehle ---
         async function toggleRelay() {
             currentPumpState = !currentPumpState;
-            updatePumpUI(currentPumpState); // UI sofort ändern für snappy feeling
+            updatePumpUI(currentPumpState);
 
             await fetch('/api/relay', {
                 method: 'POST',
@@ -258,22 +251,6 @@
                 body: JSON.stringify({ duration_min: parseInt(min) })
             });
             alert("Timer gestartet: Bewässere für " + min + " Minuten.");
-        }
-
-        async function setCycle() {
-            const interval = parseInt(document.getElementById('cycleIntervalSlider').value, 10);
-            const duration = parseInt(document.getElementById('durationSlider').value, 10);
-            const response = await fetch('/api/cycle', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ cycle_interval_minutes: interval, watering_duration_minutes: duration })
-            });
-            const data = await response.json();
-            if (data.status === 'cycle_set') {
-                alert('Zyklus gesetzt: alle ' + interval + ' Minuten, Dauer ' + duration + ' Minuten.');
-            } else {
-                alert('Zyklus konnte nicht gesetzt werden.');
-            }
         }
 
         function updatePumpUI(state) {
@@ -294,23 +271,23 @@
             }
         }
 
+        // --- 6. Profil-Manager ---
         async function loadProfilesList() {
             try {
                 const response = await fetch('/api/profiles');
                 const profiles = await response.json();
                 
                 const select = document.getElementById('profileSelect');
-                select.innerHTML = ''; // Leeren
+                select.innerHTML = ''; 
                 
                 if(profiles.length === 0) {
-                    select.innerHTML = '<option disabled>Keine Profile auf SD gefunden</option>';
+                    select.innerHTML = '<option disabled>Keine Profile gefunden</option>';
                     return;
                 }
 
                 profiles.forEach(name => {
                     let opt = document.createElement('option');
                     opt.value = name;
-                    // Ersten Buchstaben groß machen für die Optik
                     opt.innerHTML = name.charAt(0).toUpperCase() + name.slice(1); 
                     select.appendChild(opt);
                 });
@@ -325,6 +302,16 @@
             
             if(!selectedName) return;
 
+            // Bild laden (z.B. /img/sommer.jpg)
+            const imgEl = document.getElementById('profileImage');
+            imgEl.src = `/img/${selectedName}.jpg`;
+            imgEl.style.display = 'inline-block';
+            
+            // Fehler abfangen, falls kein Bild existiert
+            imgEl.onerror = function() {
+                imgEl.style.display = 'none';
+            };
+
             await fetch('/api/profile/activate', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -333,47 +320,37 @@
             
             document.getElementById('activeProfileText').innerHTML = 
                 `Aktuell geladen: <span class="text-success fw-bold">${selectedName}</span>`;
-            alert(`Profil '${selectedName}' wurde aktiviert!`);
         }
 
-        // --- PROFILBILD UPDATEN ---
-        // Diese Zeile fügst du in deine bestehende Funktion activateSelectedProfile() ein:
-        // document.getElementById('profileImage').src = `/img/${selectedName}.jpg`;
-        // document.getElementById('profileImage').style.display = 'block';
-
-
-        // --- HISTOGRAMM (CHART) LOGIK ---
+        // --- 7. Histogramm (Chart.js) ---
         let logChartInstance = null;
 
         async function loadAndDrawChart() {
             try {
                 const response = await fetch('/api/logs');
-                const csvText = await response.text();
+                if(!response.ok) return;
                 
-                // CSV parsen
+                const csvText = await response.text();
                 const lines = csvText.split('\n').filter(line => line.trim() !== '');
                 
                 const labels = [];
                 const tempValues = [];
                 const moistValues = [];
 
-                // Wir nehmen nur die letzten 50 Einträge, damit das Chart übersichtlich bleibt
+                // Letzte 50 Einträge
                 const recentLines = lines.slice(-50);
 
                 recentLines.forEach(line => {
                     const cols = line.split(',');
                     if (cols.length >= 4) {
-                        // CSV Format: Zeit, Temp, Humid, Moisture, Relay
-                        labels.push(cols[0].substring(11, 16)); // Nur Uhrzeit (HH:MM)
+                        labels.push(cols[0].substring(11, 16)); // Zeit extrahieren HH:MM
                         tempValues.push(parseFloat(cols[1]));
                         moistValues.push(parseInt(cols[3]));
                     }
                 });
 
-                // Chart zeichnen
                 const ctx = document.getElementById('logChart').getContext('2d');
                 
-                // Altes Chart zerstören, falls wir es aktualisieren
                 if (logChartInstance) {
                     logChartInstance.destroy();
                 }
@@ -387,20 +364,25 @@
                                 label: 'Temperatur (°C)',
                                 data: tempValues,
                                 borderColor: '#dc3545',
+                                backgroundColor: 'rgba(220, 53, 69, 0.1)',
                                 tension: 0.3,
-                                yAxisID: 'y'
+                                yAxisID: 'y',
+                                fill: true
                             },
                             {
                                 label: 'Bodenfeuchte (%)',
                                 data: moistValues,
                                 borderColor: '#0dcaf0',
+                                backgroundColor: 'rgba(13, 202, 240, 0.1)',
                                 tension: 0.3,
-                                yAxisID: 'y1'
+                                yAxisID: 'y1',
+                                fill: true
                             }
                         ]
                     },
                     options: {
                         responsive: true,
+                        maintainAspectRatio: false, // Wichtig für die Responsivität im Wrapper
                         interaction: { mode: 'index', intersect: false },
                         scales: {
                             y: { type: 'linear', display: true, position: 'left' },
@@ -409,16 +391,16 @@
                     }
                 });
             } catch (err) {
-                console.error("Fehler beim Laden der Logs für das Chart:", err);
+                console.error("Fehler beim Zeichnen des Charts:", err);
             }
         }
 
-        // Chart beim Starten der Seite laden
-        loadAndDrawChart();
-        // Du kannst das Chart auch z.B. alle 15 Minuten per setInterval() aktualisieren lassen
-
-        // Start-Aufruf
+        // --- 8. Initialisierung beim Laden ---
         loadProfilesList();
+        loadAndDrawChart();
+        
+        // Chart alle 15 Minuten (900.000 ms) im Hintergrund aktualisieren
+        setInterval(loadAndDrawChart, 900000); 
 
     </script>
 </body>
