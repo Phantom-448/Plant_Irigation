@@ -79,5 +79,5 @@ Desktop.ini
 *.suo       # Visual Studio Solution User Options
 *.sln.docstates # Visual Studio
 
-.vscode/
-.devcontainer/ # If using Dev Containers in VS Code
+*.vscode/
+*.devcontainer/ # If using Dev Containers in VS Code
