@@ -1,20 +1,16 @@
 #include <stdio.h>
 #include <string.h>
+#include <sys/stat.h>
 #include "esp_log.h"
 #include "esp_vfs_fat.h"
 #include "sdmmc_cmd.h"
 #include "driver/sdspi_host.h"
 #include "driver/spi_master.h"
 #include "sd_storage.h"
+#include "pin_config.h"
 
 static const char *TAG = "SD_CARD";
 
-#define PIN_NUM_MISO 5
-#define PIN_NUM_MOSI 6
-#define PIN_NUM_CLK  4
-#define PIN_NUM_CS   7
-
-#define MOUNT_POINT "/sdcard"
 
 // Globale Variable für die Karte
 sdmmc_card_t *card;
@@ -34,9 +30,9 @@ void init_sd_card(void) {
     // 2. SPI-Bus konfigurieren
     sdmmc_host_t host = SDSPI_HOST_DEFAULT();
     spi_bus_config_t bus_cfg = {
-        .mosi_io_num = PIN_NUM_MOSI,
-        .miso_io_num = PIN_NUM_MISO,
-        .sclk_io_num = PIN_NUM_CLK,
+        .mosi_io_num = GPIO_SD_MOSI,
+        .miso_io_num = GPIO_SD_MISO,
+        .sclk_io_num = GPIO_SD_SCLK,
         .quadwp_io_num = -1,
         .quadhd_io_num = -1,
         .max_transfer_sz = 4000,
@@ -51,11 +47,11 @@ void init_sd_card(void) {
 
     // 3. Den Chip-Select Pin an den Host binden
     sdspi_device_config_t slot_config = SDSPI_DEVICE_CONFIG_DEFAULT();
-    slot_config.gpio_cs = PIN_NUM_CS;
+    slot_config.gpio_cs = GPIO_SD_CS;
     slot_config.host_id = host.slot;
 
     // 4. Mounten! (Das verbindet den SPI-Treiber mit dem Dateisystem)
-    ret = esp_vfs_fat_sdspi_mount(MOUNT_POINT, &host, &slot_config, &mount_config, &card);
+    ret = esp_vfs_fat_sdspi_mount(SD_MOUNT_POINT, &host, &slot_config, &mount_config, &card);
 
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Mounten der SD-Karte fehlgeschlagen (Code %s)", esp_err_to_name(ret));
@@ -64,12 +60,17 @@ void init_sd_card(void) {
     
     // Wenn wir hier ankommen, war es erfolgreich
     sdmmc_card_print_info(stdout, card);
-    ESP_LOGI(TAG, "SD-Karte erfolgreich gemountet unter %s", MOUNT_POINT);
+    ESP_LOGI(TAG, "SD-Karte erfolgreich gemountet unter %s", SD_MOUNT_POINT);
+
+    // Basisordner für Logs und Profile anlegen, falls nicht vorhanden
+    mkdir(SD_LOG_DIR, 0755);
+    mkdir(SD_PROFILE_DIR, 0755);
 }
+
 // Ein Profil speichern (z.B. "sommer.json")
 void save_profile(const char* profil_name, const char* json_string) {
     char filepath[64];
-    snprintf(filepath, sizeof(filepath), "%s/%s.json", MOUNT_POINT, profil_name);
+    snprintf(filepath, sizeof(filepath), "%s/%s.json", SD_PROFILE_DIR, profil_name);
 
     ESP_LOGI(TAG, "Öffne Datei zum Schreiben: %s", filepath);
     FILE* f = fopen(filepath, "w");
@@ -83,10 +84,20 @@ void save_profile(const char* profil_name, const char* json_string) {
     ESP_LOGI(TAG, "Profil '%s' erfolgreich gespeichert.", profil_name);
 }
 
+void sd_write_log(const char* log_line) {
+    FILE* f = fopen(SD_LOG_FILE, "a");
+    if (f == NULL) {
+        ESP_LOGE(TAG, "Fehler: Konnte Log-Datei nicht öffnen!");
+        return;
+    }
+    fprintf(f, "%s\n", log_line);
+    fclose(f);
+}
+
 // Ein Profil laden und auf der Konsole ausgeben
 void load_profile(const char* profil_name) {
     char filepath[64];
-    snprintf(filepath, sizeof(filepath), "%s/%s.json", MOUNT_POINT, profil_name);
+    snprintf(filepath, sizeof(filepath), "%s/%s.json", SD_PROFILE_DIR, profil_name);
 
     FILE* f = fopen(filepath, "r");
     if (f == NULL) {

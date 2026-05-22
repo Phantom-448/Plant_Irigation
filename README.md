@@ -1,66 +1,114 @@
-# 🪴 SmartIrrigation C3 – Smarte Balkon-Bewässerung
+# 🪴 SmartIrrigation C3 – Smartes Balkon-Bewässerungssystem
 
-Dieses Projekt realisiert eine automatisierte und fernsteuerbare Bewässerungsanlage für Balkonpflanzen. Herzstück des Systems ist ein **ESP32-C3 (RISC-V)**, der sowohl die Sensorik auswertet als auch die Aktoren (Pumpen/Ventile) über einen Port-Expander steuert.
+Dieses Projekt baut ein lokal laufendes Bewässerungssystem für Balkonpflanzen auf Basis eines **ESP32-C3 (RISC-V)**. Es nutzt **FreeRTOS** für Multitasking, stellt ein **lokales Web-Dashboard** bereit und speichert **Logs und Bewässerungsprofile auf einer SD-Karte**.
 
-## 🎯 Motivation
-Pflanzen auf dem Balkon sind besonders im Sommer extremen Bedingungen ausgesetzt. Durch die starke Sonneneinstrahlung untertags reicht eine einmalige Bewässerung oft nicht aus. Dieses System sorgt dafür, dass:
-* Die Feuchtigkeit kontinuierlich überwacht wird.
-* Pflanzen auch bei Abwesenheit bedarfsgerecht Wasser erhalten.
-* Die Steuerung bequem per Smartphone oder Home Assistant erfolgt.
+## 🎯 Projektidee
 
----
+Das System ist bewusst ohne Cloud konzipiert:
+* lokale Entscheidungslogik für smarte Bewässerung
+* Web-Dashboard direkt auf dem ESP32-C3
+* Profile und Logs auf SD-Karte gespeichert
+* thread-sicherer globaler Systemzustand über FreeRTOS-Mutex
 
-## 🏗 Systemarchitektur
+## 📌 Hardware & Pin-Konfiguration
 
-Das System ist modular aufgebaut, um eine hohe Wartbarkeit und Ausfallsicherheit zu gewährleisten. Die Software basiert auf dem **Espressif IoT Development Framework (ESP-IDF)**.
+Die Hardware-Pins sind zentral in `main/pin_config.h` abgelegt. Dort findest du die wichtigsten Zuordnungen für Relais, SD-Karte und I2C.
 
-### Hardware-Komponenten
-* **Mikrocontroller:** ESP32-C3 (RISC-V Architektur).
-* **I/O-Erweiterung:** MCP23017 Port-Expander (via I2C) zur Ansteuerung von bis zu 16 Relais/Ventilen.
-* **Sensorik:**
-    * Interner System-Temperatursensor (Chip-Überwachung).
-    * Externer Luftfeuchtigkeits- und Temperatursensor (via I2C).
-    * Bodenfeuchtigkeitssensoren (kapazitiv).
-* **Aktorik:** 12V Wasserpumpe und Magnetventile, geschaltet über Relais.
+### Aktuelle GPIO-Belegung
 
-### Software-Module (C-Files)
-Die Logik ist in spezialisierte Module unterteilt:
-* `wlan.c`: Verwaltet die WiFi-Verbindung (Station Mode) inkl. Kconfig-Integration für sichere Credentials.
-* `state.c`: Zentrales State-Management mit **FreeRTOS Mutex** zur thread-sicheren Datenhaltung.
-* `temp.c` / `humid.c`: Sensor-Auslesung inklusive digitaler Signalverarbeitung (**IIR-Filter** zur Messwertglättung).
-* `webserver.c`: Bereitstellung eines REST-API Backends und eines Bootstrap-basierten Dashboards.
-* `mqtt_ha.c`: Integration in **Home Assistant** mittels MQTT Auto-Discovery.
-* `mcp23017.c`: Treiber für die I2C-Kommunikation mit dem Port-Expander.
+| Funktion | Makro | Pin |
+|---|---|---|
+| Relais / Pumpe | `GPIO_RELAY` | GPIO 10 |
+| SD-Karte MISO | `GPIO_SD_MISO` | GPIO 5 |
+| SD-Karte MOSI | `GPIO_SD_MOSI` | GPIO 6 |
+| SD-Karte SCLK | `GPIO_SD_SCLK` | GPIO 4 |
+| SD-Karte CS | `GPIO_SD_CS` | GPIO 7 |
+| I2C SDA (Sensor) | `GPIO_I2C_SDA` | GPIO 8 |
+| I2C SCL (Sensor) | `GPIO_I2C_SCL` | GPIO 9 |
 
----
+### SD-Dateipfade
 
-## 📊 Features
+`main/pin_config.h` definiert auch die Pfade für das SD-Dateisystem:
+* `SD_MOUNT_POINT` → `/sdcard`
+* `SD_LOG_DIR` → `/sdcard/logs`
+* `SD_PROFILE_DIR` → `/sdcard/profiles`
+* `SD_LOG_FILE` → `/sdcard/logs/sensor_log.csv`
 
-### 📱 Web-Dashboard
-Ein mobiles Dashboard auf Basis von **Bootstrap 5**, das direkt vom ESP32-C3 ausgeliefert wird.
-* **Monitoring:** Echtzeitanzeige von Temperatur, Luft- und Bodenfeuchtigkeit.
-* **Ladebalken:** Visualisierung des Zeitraums bis zur nächsten automatischen Bewässerung.
-* **Steuerung:** Manuelles Starten/Stoppen der Pumpe sowie Schieberegler für Bewässerungsdauer und Pumpenleistung (PWM).
+Diese Pfade werden im SD-Modul verwendet, damit alle Dateizugriffe konsistent bleiben.
 
-### 🏠 Home Assistant Integration
-Vollständige Einbindung in das Smart Home über den **Mosquitto MQTT Broker**:
-* Automatisches Erkennen des Geräts (Auto-Discovery).
-* Zustandsübermittlung und Fernsteuerung über die Home Assistant App.
+### Warum `pin_config.h`?
 
-### 🛡 Signalverarbeitung & Sicherheit
-* **IIR-Filter:** Mathematische Glättung der Sensorwerte, um Fehlsteuerungen durch Rauschen zu vermeiden.
-* **NVS Integration:** Dauerhaftes Speichern von Konfigurationen (z.B. Zeitpläne) im Flash-Speicher, sodass diese nach einem Stromausfall erhalten bleiben.
+Mit einer zentralen Pin-Definition kannst du:
+* Änderungen am Board-Pinout einmalig durchführen
+* unterschiedliche Module sauber halten
+* den Code einfacher auf andere Hardware anzupassen
 
----
+## 🧱 Software-Architektur
 
-## 🚀 Installation & Build
+Das Projekt ist modular aufgebaut, damit jede Komponente nur eine Aufgabe übernimmt.
+
+### Wichtige Module
+
+* `main.c` – Systemstart, Initialisierung, zyklische Smart-Logik
+* `state.c` / `state.h` – globaler Systemzustand mit Mutex
+* `actor.c` / `actor.h` – Pumpen-/Relaissteuerung
+* `wlan.c` / `wlan.h` – WiFi-Station und Webserver-Start
+* `webserver.c` / `webserver.h` – HTTP-Server und REST-API
+* `timer.c` / `timer.h` – Bewässerungs- und Logging-Timer
+* `logger.c` / `logger.h` – CSV-Logging von Sensordaten
+* `sd_storage.c` / `sd_storage.h` – SD-Karten-Mount, Log- und Profilzugriff
+* `profile_manager.c` / `profile_manager.h` – Scannen und Aktivieren von Bewässerungsprofilen
+* `temp.c` / `temp.h` – Temperaturmessung und Filterung
+* `humid.c` / `humid.h` – Feuchtigkeitsmessung und Filterung
+
+## 📊 Kernfunktionen
+
+### Web-Dashboard
+Das Web-Dashboard wird eingebettet und lokal ausgeliefert. Es zeigt:
+* Temperatur
+* Luftfeuchtigkeit
+* Bodenfeuchtigkeit
+* Countdown bis zur nächsten automatischen Bewässerung
+* Profilauswahl
+* Zyklus- und Dauersteuerung
+* Direkten Pumpenschalter
+
+### SD-Karte & Profile
+Die SD-Karte wird per SPI eingebunden und automatisiert in folgende Ordner strukturiert:
+* `/sdcard/logs`
+* `/sdcard/profiles`
+
+Profildateien liegen als `.json` im Profilordner und können per Web-API geladen werden.
+
+### Thread-sicherer Zustand
+Alle gemeinsamen Daten werden in `sys_state` gehalten und nur nach erfolgreichem `xSemaphoreTake(state_mutex, ...)` gelesen oder geschrieben. So werden Race Conditions vermieden.
+
+## 🔧 Build & Nutzung
 
 ### Voraussetzungen
-* Installiertes **ESP-IDF** (Espressif IDE oder VS Code Plugin).
-* Aktiver MQTT Broker (z.B. Home Assistant Add-on).
+* Installierte ESP-IDF Umgebung
+* Funktionierende SD-Karte
+* WLAN-Zugangsdaten via `menuconfig`
 
-### Build-Prozess
-1. Repository klonen.
-2. Projektkonfiguration öffnen:
-   ```bash
-   idf.py menuconfig
+### Build
+```bash
+cd "wps_softap_registrar"
+idf.py menuconfig
+idf.py build
+idf.py flash
+```
+
+### Laufend
+* Das Web-Dashboard ist nach dem Start über die IP-Adresse des ESP erreichbar
+* Profile werden beim Start von der SD-Karte eingelesen
+* Logs werden periodisch in `sensor_log.csv` geschrieben
+
+## 💡 Hinweise
+
+* `humid.c` ist als I2C-Sensor vorbereitet, liefert aktuell aber simulierte Messwerte.
+* `temp.c` nutzt den internen Temperatursensor des ESP32-C3.
+* Alle Hardware-Pins werden aus `main/pin_config.h` geladen.
+
+---
+
+Mit dieser Struktur kannst du das Projekt leicht erweitern: echte I2C-Sensoren, Profil-Logik oder weitere Relaisausgänge lassen sich zentral konfigurieren.

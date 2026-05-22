@@ -1,17 +1,20 @@
 #include <stdbool.h>
+#include <stdlib.h>
+#include <string.h>
 #include "state.h"
 #include "webserver.h"
 #include "actor.h"
 #include "timer.h"
+#include "cJSON.h"
+#include "profile_manager.h"
 #include <esp_log.h>
 #include <esp_http_server.h>
-#include <string.h>
 
-// #include <cJSON.h>
-// Ganz oben in webserver.c hinzufügen:
 static esp_err_t watering_start_handler(httpd_req_t *req);
 static esp_err_t relay_post_handler(httpd_req_t *req);
 static esp_err_t cycle_post_handler(httpd_req_t *req);
+static esp_err_t profiles_list_get_handler(httpd_req_t *req);
+static esp_err_t profile_activate_post_handler(httpd_req_t *req);
 
 static const char *TAG = "WEB_SERVER";
 
@@ -57,14 +60,27 @@ static bool parse_json_bool(const char *src, const char *key, bool *out) {
 }
 
 static esp_err_t status_get_handler(httpd_req_t *req) {
+    float temperature = 0.0f;
+    float air_humidity = 0.0f;
+    int soil_moisture = 0;
     int seconds_to_next = timer_get_seconds_to_next_cycle();
     bool pump_running = actor_get_state();
     int cycle_interval = timer_get_cycle_interval_minutes();
     int watering_duration = timer_get_watering_duration_minutes();
 
+    if (xSemaphoreTake(state_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+        temperature = sys_state.current_temp;
+        air_humidity = sys_state.air_humidity;
+        soil_moisture = sys_state.soil_moisture_1;
+        xSemaphoreGive(state_mutex);
+    }
+
     char response[256];
     int len = snprintf(response, sizeof(response),
-        "{\"temperature\": 25.0, \"air_humidity\": 60.0, \"soil_moisture_1\": 62, \"pump_running\": %s, \"seconds_to_next_water\": %d, \"cycle_interval_minutes\": %d, \"watering_duration_minutes\": %d}",
+        "{\"temperature\": %.1f, \"air_humidity\": %.1f, \"soil_moisture_1\": %d, \"pump_running\": %s, \"seconds_to_next_water\": %d, \"cycle_interval_minutes\": %d, \"watering_duration_minutes\": %d}",
+        temperature,
+        air_humidity,
+        soil_moisture,
         pump_running ? "true" : "false",
         seconds_to_next,
         cycle_interval,
@@ -152,8 +168,53 @@ void start_webserver(void) {
         httpd_uri_t watering_uri = { .uri = "/api/start_watering", .method = HTTP_POST, .handler = watering_start_handler };
         httpd_register_uri_handler(server, &watering_uri);
 
+        httpd_uri_t profiles_list_uri = { .uri = "/api/profiles", .method = HTTP_GET, .handler = profiles_list_get_handler };
+        httpd_register_uri_handler(server, &profiles_list_uri);
+
+        httpd_uri_t profile_activate_uri = { .uri = "/api/profile/activate", .method = HTTP_POST, .handler = profile_activate_post_handler };
+        httpd_register_uri_handler(server, &profile_activate_uri);
+
         ESP_LOGI(TAG, "HTTP-Server gestartet und Endpunkte registriert.");
     } else {
         ESP_LOGE(TAG, "HTTP-Server konnte nicht gestartet werden.");
     }
 }
+
+// Neuer GET-Handler in webserver.c
+static esp_err_t profiles_list_get_handler(httpd_req_t *req) {
+    ProfileList_t *list = get_available_profiles();
+    
+    cJSON *root = cJSON_CreateArray();
+    for (int i = 0; i < list->count; i++) {
+        cJSON_AddItemToArray(root, cJSON_CreateString(list->names[i]));
+    }
+
+    const char *json_str = cJSON_PrintUnformatted(root);
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_sendstr(req, json_str);
+    
+    free((void*)json_str);
+    cJSON_Delete(root);
+    return ESP_OK;
+}
+
+// Handler zum Aktivieren eines Profils (POST)
+static esp_err_t profile_activate_post_handler(httpd_req_t *req) {
+    char buf[64];
+    int ret = httpd_req_recv(req, buf, sizeof(buf) - 1);
+    if (ret <= 0) return ESP_FAIL;
+    buf[ret] = '\0';
+
+    cJSON *root = cJSON_Parse(buf);
+    if (root) {
+        cJSON *name_item = cJSON_GetObjectItem(root, "profile_name");
+        if (name_item && name_item->valuestring) {
+            // HIER rufst du die Lade-Funktion auf, die wir vorhin gebaut haben
+            load_and_activate_profile(name_item->valuestring); 
+        }
+        cJSON_Delete(root);
+    }
+    httpd_resp_sendstr(req, "{\"status\":\"ok\"}");
+    return ESP_OK;
+}
+

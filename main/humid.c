@@ -3,6 +3,7 @@
 #include "esp_log.h"
 #include "esp_system.h"
 #include "state.h"
+#include "pin_config.h"
 #include "freertos/FreeRTOS.h"
 #include <stdint.h>
 #include <stdlib.h>
@@ -21,9 +22,8 @@ static float humid_iir_filter(float old_val, float new_sample) {
 }
 
 void humid_sensor_init(void) {
-    ESP_LOGI(TAG, "Initialisiere Feuchtigkeitssensor via I2C...");
+    ESP_LOGI(TAG, "Initialisiere Feuchtigkeitssensor via I2C (SDA=%d, SCL=%d)...", GPIO_I2C_SDA, GPIO_I2C_SCL);
     
-    // Hinweis: I2C-Bus Konfiguration (GPIO 8/9 standard beim C3)
     // In einer realen Applikation wird hier der i2c_master_driver_install aufgerufen
 }
 

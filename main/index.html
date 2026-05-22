@@ -54,6 +54,21 @@
                 </div>
             </div>
         </div>
+        <div class="card shadow-sm border-0 mb-4">
+            <div class="card-body">
+                <h6 class="card-title text-muted fw-bold mb-3"><i class="fa-solid fa-file-lines"></i> Bewässerungs-Profil</h6>
+                
+                <div class="input-group">
+                    <select class="form-select" id="profileSelect">
+                        <option selected disabled>Lade Profile...</option>
+                    </select>
+                    <button class="btn btn-primary fw-bold" onclick="activateSelectedProfile()">
+                        Aktivieren
+                    </button>
+                </div>
+                <div class="form-text mt-2" id="activeProfileText">Aktuell geladen: Unbekannt</div>
+            </div>
+        </div>
 
         <div class="row g-4">
             <div class="col-12 col-md-6">
@@ -257,6 +272,51 @@
                 txt.classList.remove('text-danger');
             }
         }
+
+        async function loadProfilesList() {
+            try {
+                const response = await fetch('/api/profiles');
+                const profiles = await response.json();
+                
+                const select = document.getElementById('profileSelect');
+                select.innerHTML = ''; // Leeren
+                
+                if(profiles.length === 0) {
+                    select.innerHTML = '<option disabled>Keine Profile auf SD gefunden</option>';
+                    return;
+                }
+
+                profiles.forEach(name => {
+                    let opt = document.createElement('option');
+                    opt.value = name;
+                    // Ersten Buchstaben groß machen für die Optik
+                    opt.innerHTML = name.charAt(0).toUpperCase() + name.slice(1); 
+                    select.appendChild(opt);
+                });
+            } catch (err) {
+                console.error("Fehler beim Laden der Profil-Liste", err);
+            }
+        }
+
+        async function activateSelectedProfile() {
+            const select = document.getElementById('profileSelect');
+            const selectedName = select.value;
+            
+            if(!selectedName) return;
+
+            await fetch('/api/profile/activate', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ profile_name: selectedName })
+            });
+            
+            document.getElementById('activeProfileText').innerHTML = 
+                `Aktuell geladen: <span class="text-success fw-bold">${selectedName}</span>`;
+            alert(`Profil '${selectedName}' wurde aktiviert!`);
+        }
+
+        // Start-Aufruf
+        loadProfilesList();
     </script>
 </body>
 </html>

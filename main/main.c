@@ -6,7 +6,6 @@
 #include <time.h>
 #include <stdio.h>
 
-// Deine Module
 #include "state.h"
 #include "wlan.h"
 #include "webserver.h"
@@ -15,14 +14,52 @@
 #include "actor.h"
 #include "timer.h"
 #include "sd_storage.h"
+#include "profile_manager.h"
+#include "logger.h"
+
 
 static const char *TAG = "MAIN_APP";
 
-
-
 static void timer_cycle_callback(void) {
-    int duration = timer_get_watering_duration_minutes();
-    ESP_LOGI(TAG, "Timer löst Bewässerung aus: Dauer %d Minuten", duration);
+    ESP_LOGI("SMART_LOGIC", "Starte Profil-Auswertung...");
+
+    int duration = 0;
+    int moisture = 0;
+    float temp = 0.0f;
+    WateringProfile_t current_profile;
+
+    // 1. Snapshot der Daten sicher aus dem State holen
+    if (xSemaphoreTake(state_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+        moisture = sys_state.soil_moisture_1;
+        temp = sys_state.current_temp;
+        current_profile = sys_state.active_profile; // Kopie des structs
+        xSemaphoreGive(state_mutex);
+    } else {
+        ESP_LOGE("SMART_LOGIC", "Konnte State nicht lesen!");
+        return; 
+    }
+
+    // 2. Regel 1: Ist die Erde feucht genug?
+    // Wenn Feuchtigkeit HÖHER als der Schwellenwert ist -> Abbruch, nicht wässern!
+    if (moisture > current_profile.min_soil_moisture_percent) {
+        ESP_LOGI("SMART_LOGIC", "Erde ist feucht genug (%d%% > %d%%). Wässern übersprungen.", 
+                 moisture, current_profile.min_soil_moisture_percent);
+        return; // Callback beenden!
+    }
+
+    // 3. Regel 2: Dauer berechnen
+    duration = current_profile.base_watering_minutes;
+    ESP_LOGI("SMART_LOGIC", "Erde zu trocken. Basis-Dauer: %d Min.", duration);
+
+    // 4. Regel 3: Wetter/Temperatur-Anpassung
+    if (temp >= current_profile.hot_temp_threshold) {
+        duration += current_profile.hot_temp_extra_minutes;
+        ESP_LOGI("SMART_LOGIC", "Es ist heiß (%.1f°C >= %.1f°C)! Addiere %d Extra-Minuten. Neue Dauer: %d Min.", 
+                 temp, current_profile.hot_temp_threshold, current_profile.hot_temp_extra_minutes, duration);
+    }
+
+    // 5. Befehl an den Aktor senden
+    ESP_LOGI("SMART_LOGIC", "Auswertung beendet. Starte Pumpe für %d Minuten.", duration);
     actor_start_timed_watering(duration);
 }
 
@@ -33,8 +70,7 @@ static void timer_cycle_callback(void) {
 void sensor_reading_task(void *pvParameters) {
     while (1) {
         // Temperatur vom internen System-Sensor lesen und filtern
-        // ESP32C3 hat keinen internen Temp-Sensor, daher dummy Wert
-        float t = 25.0f; // temp_sensor_read_filtered();
+        float t = temp_sensor_read_filtered();
         
         // Luftfeuchtigkeit lesen und filtern
         float h = humid_sensor_read_filtered();
@@ -50,53 +86,6 @@ static void mqtt_app_start(void) {
     ESP_LOGI(TAG, "MQTT stub: mqtt_app_start() called, no MQTT implementation available.");
 }
 
-void log_sensor_data_callback(void) {
-    // Zeitstempel generieren
-    time_t now;
-    struct tm timeinfo;
-    time(&now);
-    localtime_r(&now, &timeinfo);
-    
-    char time_str[64];
-    strftime(time_str, sizeof(time_str), "%Y-%m-%d %H:%M:%S", &timeinfo);
-
-    char log_buffer[128];
-    
-    // Daten sicher aus dem globalen State holen
-    if (xSemaphoreTake(state_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
-        snprintf(log_buffer, sizeof(log_buffer), "%s,%.1f,%.1f,%d,%d",
-                 time_str,
-                 sys_state.current_temp,
-                 sys_state.air_humidity,
-                 sys_state.soil_moisture_1,
-                 sys_state.valve_1_state ? 1 : 0);
-                 
-        xSemaphoreGive(state_mutex);
-        
-        // Auf die SD-Karte schreiben
-        sd_write_log(log_buffer);
-        ESP_LOGI("MAIN", "Automatischer Log geschrieben: %s", log_buffer);
-    }
-}
-
-
-// Funktion zum Schreiben des Logs, die von main.c aufgerufen wird
-void sd_write_log(const char* log_line) {
-    // "a" steht für Append. Neue Daten werden unten angehängt.
-    // Wenn die Datei nicht existiert, wird sie automatisch erstellt.
-    FILE* f = fopen("/sdcard/logs/sensor_log.csv", "a");
-    
-    if (f == NULL) {
-        ESP_LOGE(TAG, "Fehler: Konnte Log-Datei nicht öffnen!");
-        return;
-    }
-    
-    // Daten in die Datei schreiben und Zeilenumbruch anfügen
-    fprintf(f, "%s\n", log_line);
-    
-    // WICHTIG: Sofort schließen, um Datenverlust bei Stromausfall zu verhindern
-    fclose(f); 
-}
 
 void app_main(void) {
     ESP_LOGI(TAG, "Starte Garten-Bewässerung auf ESP32-C3...");
@@ -114,8 +103,12 @@ void app_main(void) {
     state_init();
     ESP_LOGI(TAG, "Systemzustand und Mutex initialisiert.");
 
-    // 3. Hardware-Peripherie initialisieren (I2C-Bus & Sensoren)[cite: 1]
-    // temp_sensor_init();  // Interne System-Sensorik - not supported on ESP32C3
+    init_sd_card();      // SD-Karte initialisieren
+    scan_profiles_on_sd(); // SD-Karte nach Bewässerungsprofilen durchsuchen
+
+    // 3. Hardware-Peripherie initialisieren (I2C-Bus & Sensoren)
+    temp_sensor_init();
+    ESP_LOGI(TAG, "Temperatursensor initialisiert.");
     ESP_LOGI(TAG, "Initialisiere Feuchtigkeitssensor...");
     humid_sensor_init(); // Externer Feuchtigkeitssensor
     ESP_LOGI(TAG, "Feuchtigkeitssensor initialisiert.");
@@ -127,6 +120,7 @@ void app_main(void) {
     timer_init();
     timer_register_callback(timer_cycle_callback);
     timer_start_cycle(60, 5); // Zyklus: alle 60 Minuten, Bewässerungsdauer 5 Minuten
+    timer_start_logging(logger_write_sensor_data);
     ESP_LOGI(TAG, "Zyklischer Bewässerungstimer gestartet.");
 
     // 4. Netzwerk-Verbindungen herstellen
