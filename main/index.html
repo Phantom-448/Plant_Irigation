@@ -302,16 +302,32 @@
             
             if(!selectedName) return;
 
-            // Bild laden (z.B. /img/sommer.jpg)
+            // 1. Profilbild aktualisieren
             const imgEl = document.getElementById('profileImage');
             imgEl.src = `/img/${selectedName}.jpg`;
             imgEl.style.display = 'inline-block';
-            
-            // Fehler abfangen, falls kein Bild existiert
             imgEl.onerror = function() {
-                imgEl.style.display = 'none';
+                imgEl.style.display = 'none'; // Verbergen, falls kein Bild existiert
             };
 
+            // 2. NEU: Navbar-Hintergrundbild dynamisch anpassen
+            const navbar = document.querySelector('.navbar-custom');
+            
+            // Erstelle ein temporäres Image-Objekt, um zu prüfen, ob das profilpezifische Headerbild existiert
+            const testImg = new Image();
+            testImg.src = `/img/${selectedName}_header.jpg`;
+            
+            testImg.onload = function() {
+                // Wenn das Bild existiert, lade es in die Navbar
+                navbar.style.backgroundImage = `linear-gradient(rgba(0, 0, 0, 0.4), rgba(0, 0, 0, 0.4)), url('/img/${selectedName}_header.jpg')`;
+            };
+            
+            testImg.onerror = function() {
+                // Fallback: Wenn kein Profil-Header existiert, nutze das allgemeine Standardbild
+                navbar.style.backgroundImage = `linear-gradient(rgba(0, 0, 0, 0.4), rgba(0, 0, 0, 0.4)), url('/img/header.jpg')`;
+            };
+
+            // 3. Aktivierung an den ESP32 senden
             await fetch('/api/profile/activate', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },

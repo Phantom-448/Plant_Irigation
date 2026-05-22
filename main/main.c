@@ -101,6 +101,11 @@ void app_main(void) {
     ESP_LOGI(TAG, "Systemzustand und Mutex initialisiert.");
 
     init_sd_card();      // SD-Karte initialisieren
+    if (sd_card_self_test()) {
+        ESP_LOGI(TAG, "SD-Karten-Selbsttest erfolgreich.");
+    } else {
+        ESP_LOGW(TAG, "SD-Karten-Selbsttest fehlgeschlagen oder SD nicht verfügbar.");
+    }
     scan_profiles_on_sd(); // SD-Karte nach Bewässerungsprofilen durchsuchen
 
     // 3. Hardware-Peripherie initialisieren (I2C-Bus & Sensoren)

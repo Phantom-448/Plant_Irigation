@@ -8,6 +8,8 @@
 #include "timer.h"
 #include "cJSON.h"
 #include "profile_manager.h"
+#include "sd_storage.h"
+#include "pin_config.h"
 #include <esp_log.h>
 #include <esp_http_server.h>
 
@@ -16,6 +18,8 @@ static esp_err_t relay_post_handler(httpd_req_t *req);
 static esp_err_t cycle_post_handler(httpd_req_t *req);
 static esp_err_t profiles_list_get_handler(httpd_req_t *req);
 static esp_err_t profile_activate_post_handler(httpd_req_t *req);
+static esp_err_t favicon_get_handler(httpd_req_t *req);
+static esp_err_t sdcard_test_handler(httpd_req_t *req);
 
 static const char *TAG = "WEB_SERVER";
 
@@ -148,29 +152,40 @@ static esp_err_t watering_start_handler(httpd_req_t *req) {
 
 #include <sys/param.h>
 
-// 1. Handler für die CSV-Logdatei
-static esp_err_t api_logs_handler(httpd_req_t *req) {
-    // Öffne die Log-Datei im Lese-Modus
-    FILE* f = fopen("/sdcard/logs/sensor_log.csv", "r");
+// Gemeinsame Hilfsfunktion, um Datei-Inhalte an den HTTP-Client zu senden.
+static esp_err_t serve_file_from_sd(httpd_req_t *req, const char *filepath, const char *content_type) {
+    ESP_LOGI(TAG, "Serve file from SD: %s", filepath);
+
+    FILE *f = fopen(filepath, "rb");
     if (f == NULL) {
-        ESP_LOGE(TAG, "Konnte Log-Datei nicht öffnen");
+        ESP_LOGW(TAG, "Datei nicht gefunden: %s", filepath);
         httpd_resp_send_404(req);
         return ESP_FAIL;
     }
 
-    httpd_resp_set_type(req, "text/csv");
-
-    // Chunked Transfer: Wir lesen immer 512 Bytes und senden sie sofort
-    char chunk[512];
-    size_t chunksize;
-    while ((chunksize = fread(chunk, 1, sizeof(chunk), f)) > 0) {
-        httpd_resp_send_chunk(req, chunk, chunksize);
+    if (content_type) {
+        httpd_resp_set_type(req, content_type);
     }
-    
-    // Mit einem leeren Chunk signalisieren wir das Ende der Übertragung
-    httpd_resp_send_chunk(req, NULL, 0); 
+
+    char chunk[1024];
+    size_t read_bytes;
+    while ((read_bytes = fread(chunk, 1, sizeof(chunk), f)) > 0) {
+        if (httpd_resp_send_chunk(req, chunk, read_bytes) != ESP_OK) {
+            ESP_LOGE(TAG, "Fehler beim Senden des Datei-Chunks");
+            fclose(f);
+            return ESP_FAIL;
+        }
+    }
+
+    httpd_resp_send_chunk(req, NULL, 0);
     fclose(f);
     return ESP_OK;
+}
+
+// 1. Handler für die CSV-Logdatei
+static esp_err_t api_logs_handler(httpd_req_t *req) {
+    const char *filepath = SD_LOG_FILE;
+    return serve_file_from_sd(req, filepath, "text/csv");
 }
 
 // 2. Handler für Profilbilder (z.B. /img/sommer.jpg)
@@ -180,33 +195,29 @@ static esp_err_t image_get_handler(httpd_req_t *req) {
     const char *file_name = strrchr(req->uri, '/'); 
     
     if (file_name) {
-        snprintf(filepath, sizeof(filepath), "/sdcard/profiles%s", file_name);
+        snprintf(filepath, sizeof(filepath), "%s/profiles%s", SD_MOUNT_POINT, file_name);
     } else {
         httpd_resp_send_404(req);
         return ESP_FAIL;
     }
 
-    FILE* f = fopen(filepath, "r");
-    if (f == NULL) {
-        // Wenn das Profilbild nicht existiert
-        httpd_resp_send_404(req);
-        return ESP_FAIL;
-    }
-    
-    // Content-Type anhand der Dateiendung setzen
-    if (strstr(filepath, ".png")) {
-        httpd_resp_set_type(req, "image/png");
-    } else {
-        httpd_resp_set_type(req, "image/jpeg");
-    }
+    return serve_file_from_sd(req, filepath, strstr(filepath, ".png") ? "image/png" : "image/jpeg");
+}
 
-    char chunk[1024]; // Für Bilder können wir größere Chunks nehmen
-    size_t chunksize;
-    while ((chunksize = fread(chunk, 1, sizeof(chunk), f)) > 0) {
-        httpd_resp_send_chunk(req, chunk, chunksize);
+static esp_err_t favicon_get_handler(httpd_req_t *req) {
+    const char *filepath = SD_MOUNT_POINT "/favicon.ico";
+    ESP_LOGI(TAG, "Favicon-Anfrage: %s", filepath);
+    return serve_file_from_sd(req, filepath, "image/x-icon");
+}
+
+static esp_err_t sdcard_test_handler(httpd_req_t *req) {
+    bool ok = sd_card_self_test();
+    httpd_resp_set_type(req, "application/json");
+    if (ok) {
+        httpd_resp_sendstr(req, "{\"status\":\"ok\",\"message\":\"SD-Karten-Selbsttest bestanden\"}");
+    } else {
+        httpd_resp_sendstr(req, "{\"status\":\"error\",\"message\":\"SD-Karten-Selbsttest fehlgeschlagen\"}");
     }
-    httpd_resp_send_chunk(req, NULL, 0);
-    fclose(f);
     return ESP_OK;
 }
 
@@ -214,6 +225,8 @@ void start_webserver(void) {
     httpd_handle_t server = NULL;
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
     config.lru_purge_enable = true; // Hilft bei vielen Verbindungen
+
+    config.uri_match_fn = httpd_uri_match_wildcard;
 
     ESP_LOGI(TAG, "Starte HTTP-Server...");
     if (httpd_start(&server, &config) == ESP_OK) {
@@ -241,6 +254,12 @@ void start_webserver(void) {
 
         httpd_uri_t logs_uri = { .uri = "/api/logs", .method = HTTP_GET, .handler = api_logs_handler };
         httpd_register_uri_handler(server, &logs_uri);
+
+        httpd_uri_t sdtest_uri = { .uri = "/api/sdcard/test", .method = HTTP_GET, .handler = sdcard_test_handler };
+        httpd_register_uri_handler(server, &sdtest_uri);
+
+        httpd_uri_t favicon_uri = { .uri = "/favicon.ico", .method = HTTP_GET, .handler = favicon_get_handler };
+        httpd_register_uri_handler(server, &favicon_uri);
 
         httpd_uri_t img_uri = { .uri = "/img/*", .method = HTTP_GET, .handler = image_get_handler };
         httpd_register_uri_handler(server, &img_uri);

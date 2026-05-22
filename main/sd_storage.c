@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <sys/stat.h>
+#include "driver/gpio.h"
 #include "esp_log.h"
 #include "esp_vfs_fat.h"
 #include "sdmmc_cmd.h"
@@ -14,9 +15,30 @@ static const char *TAG = "SD_CARD";
 
 // Globale Variable für die Karte
 sdmmc_card_t *card;
+static bool ensure_directory(const char *path) {
+    struct stat st;
+    if (stat(path, &st) == 0) {
+        return true;
+    }
+
+    if (mkdir(path, 0755) != 0) {
+        ESP_LOGE(TAG, "Fehler beim Erstellen des Ordners %s", path);
+        return false;
+    }
+
+    ESP_LOGI(TAG, "Ordner auf SD-Karte erstellt: %s", path);
+    return true;
+}
 
 void init_sd_card(void) {
     esp_err_t ret;
+
+    // --- NEU: Interne Pull-Ups erzwingen, um Störungen auf den Kabeln zu filtern ---
+    gpio_set_pull_mode(GPIO_SD_MOSI, GPIO_PULLUP_ONLY);
+    gpio_set_pull_mode(GPIO_SD_MISO, GPIO_PULLUP_ONLY);
+    gpio_set_pull_mode(GPIO_SD_SCLK, GPIO_PULLUP_ONLY);
+    gpio_set_pull_mode(GPIO_SD_CS, GPIO_PULLUP_ONLY);
+    // --------------------------------------------------------------------------------
 
     // 1. Konfiguration des VFS (Virtual File System)
     esp_vfs_fat_sdmmc_mount_config_t mount_config = {
@@ -29,6 +51,11 @@ void init_sd_card(void) {
 
     // 2. SPI-Bus konfigurieren
     sdmmc_host_t host = SDSPI_HOST_DEFAULT();
+    
+    // --- NEU: Drosselung der SPI-Frequenz für stabilere Datenübertragung ---
+    host.max_freq_khz = 400; // Sehr langsamer, aber sicherer Startwert (400 kHz)
+    // -----------------------------------------------------------------------
+
     spi_bus_config_t bus_cfg = {
         .mosi_io_num = GPIO_SD_MOSI,
         .miso_io_num = GPIO_SD_MISO,
@@ -37,34 +64,91 @@ void init_sd_card(void) {
         .quadhd_io_num = -1,
         .max_transfer_sz = 4000,
     };
-    
-    // SPI Bus starten (Standard DMA Kanal)
+
     ret = spi_bus_initialize(host.slot, &bus_cfg, SDSPI_DEFAULT_DMA);
     if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Fehler beim Initialisieren des SPI Busses.");
+        ESP_LOGE(TAG, "Fehler bei der Initialisierung des SPI-Busses.");
         return;
     }
 
-    // 3. Den Chip-Select Pin an den Host binden
+    // 3. SD-Karten-Slot konfigurieren
     sdspi_device_config_t slot_config = SDSPI_DEVICE_CONFIG_DEFAULT();
     slot_config.gpio_cs = GPIO_SD_CS;
     slot_config.host_id = host.slot;
 
-    // 4. Mounten! (Das verbindet den SPI-Treiber mit dem Dateisystem)
+    // 4. Dateisystem mounten
     ret = esp_vfs_fat_sdspi_mount(SD_MOUNT_POINT, &host, &slot_config, &mount_config, &card);
 
     if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Mounten der SD-Karte fehlgeschlagen (Code %s)", esp_err_to_name(ret));
+        if (ret == ESP_FAIL) {
+            ESP_LOGE(TAG, "Mounten der SD-Karte fehlgeschlagen (Konnte Dateisystem nicht lesen).");
+        } else {
+            ESP_LOGE(TAG, "Mounten der SD-Karte fehlgeschlagen (Code %s)", esp_err_to_name(ret));
+        }
         return;
     }
-    
-    // Wenn wir hier ankommen, war es erfolgreich
-    sdmmc_card_print_info(stdout, card);
-    ESP_LOGI(TAG, "SD-Karte erfolgreich gemountet unter %s", SD_MOUNT_POINT);
 
-    // Basisordner für Logs und Profile anlegen, falls nicht vorhanden
-    mkdir(SD_LOG_DIR, 0755);
-    mkdir(SD_PROFILE_DIR, 0755);
+    ESP_LOGI(TAG, "SD-Karte erfolgreich gemountet.");
+
+    // Ordner-Struktur sicherstellen
+    ensure_directory(SD_LOG_DIR);
+    ensure_directory(SD_PROFILE_DIR);
+}
+
+bool sd_card_ready(void) {
+    return card != NULL;
+}
+
+bool sd_card_self_test(void) {
+    if (!sd_card_ready()) {
+        ESP_LOGW(TAG, "SD-Karte nicht initialisiert. Selbsttest übersprungen.");
+        return false;
+    }
+
+    const char *filepath = SD_MOUNT_POINT "/.sdcard_self_test";
+    const char *marker = "sdcard_self_test";
+    char buffer[64] = {0};
+
+    ESP_LOGI(TAG, "Starte SD-Karten-Selbsttest: %s", filepath);
+
+    FILE *f = fopen(filepath, "w");
+    if (f == NULL) {
+        ESP_LOGE(TAG, "Konnte Testdatei nicht schreiben: %s", filepath);
+        return false;
+    }
+
+    if (fprintf(f, "%s", marker) < 0) {
+        ESP_LOGE(TAG, "Schreiben in SD-Testdatei fehlgeschlagen.");
+        fclose(f);
+        remove(filepath);
+        return false;
+    }
+    fclose(f);
+
+    f = fopen(filepath, "r");
+    if (f == NULL) {
+        ESP_LOGE(TAG, "Konnte Testdatei nicht lesen: %s", filepath);
+        remove(filepath);
+        return false;
+    }
+
+    if (fgets(buffer, sizeof(buffer), f) == NULL) {
+        ESP_LOGE(TAG, "Lesen der SD-Testdatei fehlgeschlagen.");
+        fclose(f);
+        remove(filepath);
+        return false;
+    }
+    fclose(f);
+
+    remove(filepath);
+
+    if (strncmp(buffer, marker, strlen(marker)) != 0) {
+        ESP_LOGE(TAG, "SD-Testdatei enthält falschen Inhalt: %s", buffer);
+        return false;
+    }
+
+    ESP_LOGI(TAG, "SD-Karten-Selbsttest bestanden.");
+    return true;
 }
 
 // Ein Profil speichern (z.B. "sommer.json")

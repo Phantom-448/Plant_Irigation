@@ -44,48 +44,56 @@ void temp_sensor_init(void) {
 }
 
 float temp_sensor_read_filtered(void) {
-    float new_sample = filtered_temp;
+    float new_sample = -1000.0f;
 
-#if USE_SIMULATED_TEMP
     if (USE_SIMULATED_TEMP) {
-        float jitter = ((float)(esp_random() % 100) / 100.0f) - 0.5f;
-        new_sample = filtered_temp + jitter * 0.2f;
+        uint32_t r = esp_random() & 0xFFFF;
+        float jitter = (float)(r % 100) / 100.0f - 0.5f; 
+        new_sample = filtered_temp + jitter * 0.2f; 
     }
-#endif
-
 #ifdef GPIO_DHT22
-    // Block für den echten DHT22
-    float temp_c = 0.0f, humidity = 0.0f;
-    if (dht22_read((gpio_num_t)GPIO_DHT22, &temp_c, &humidity)) {
-        new_sample = temp_c;
-        
-        // Optimierung: Luftfeuchtigkeit sofort in den State schreiben!
-        if (xSemaphoreTake(state_mutex, pdMS_TO_TICKS(10)) == pdTRUE) {
-            sys_state.air_humidity = humidity;
-            xSemaphoreGive(state_mutex);
-        }
-    } else {
-        ESP_LOGW(TAG, "Failed to read DHT22 sensor");
-        return filtered_temp; // Fail-Safe
-    }
-#elif HAVE_INTERNAL_TEMP
-    // Block für den internen ESP-Sensor (Fallback)
-    temperature_sensor_handle_t temp_sensor = NULL;
-    temperature_sensor_config_t temp_sensor_config = TEMPERATURE_SENSOR_CONFIG_DEFAULT(10, 50);
-    if (temperature_sensor_install(&temp_sensor_config, &temp_sensor) == ESP_OK) {
-        if (temperature_sensor_enable(temp_sensor) == ESP_OK) {
-            float raw_temp = 0.0f;
-            if (temperature_sensor_get_celsius(temp_sensor, &raw_temp) == ESP_OK) {
-                new_sample = raw_temp;
+    else {
+        float temp_c = 0.0f, humidity = 0.0f;
+        if (dht22_read((gpio_num_t)GPIO_DHT22, &temp_c, &humidity)) {
+            new_sample = temp_c;
+            
+            // WICHTIG: Die Feuchtigkeit sofort mit abspeichern!
+            if (xSemaphoreTake(state_mutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+                sys_state.air_humidity = humidity;
+                xSemaphoreGive(state_mutex);
             }
+        } else {
+            ESP_LOGW(TAG, "Failed to read DHT22 sensor. Nutze letzten bekannten Wert.");
+            new_sample = filtered_temp; // Fallback auf den alten Wert, kein Abbruch!
         }
-        temperature_sensor_disable(temp_sensor);
-        temperature_sensor_uninstall(temp_sensor);
+    }
+#endif
+#ifndef GPIO_DHT22
+    else {
+        temperature_sensor_handle_t temp_sensor = NULL;
+        temperature_sensor_config_t temp_sensor_config = TEMPERATURE_SENSOR_CONFIG_DEFAULT(10, 50);
+        if (temperature_sensor_install(&temp_sensor_config, &temp_sensor) == ESP_OK) {
+            if (temperature_sensor_enable(temp_sensor) == ESP_OK) {
+                float raw_temp = 0.0f;
+                if (temperature_sensor_get_celsius(temp_sensor, &raw_temp) == ESP_OK) {
+                    new_sample = raw_temp;
+                }
+            }
+            temperature_sensor_disable(temp_sensor);
+            temperature_sensor_uninstall(temp_sensor);
+        }
+        if (new_sample < -500.0f) new_sample = filtered_temp;
     }
 #endif
 
-    if (new_sample < -500.0f) return -500.0f; // Dummy check
-
+    // Filter anwenden
     filtered_temp = iir_filter_update(filtered_temp, new_sample);
+
+    // Temperatur in den State schreiben
+    if (xSemaphoreTake(state_mutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+        sys_state.current_temp = filtered_temp;
+        xSemaphoreGive(state_mutex);
+    }
+
     return filtered_temp;
 }

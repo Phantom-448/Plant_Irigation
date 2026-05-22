@@ -1,7 +1,7 @@
 {
   "C_Cpp.intelliSenseEngine": "default",
   "idf.openOcdConfigs": [
-    "board/esp32c3-builtin.cfg"
+    "board/esp32c3-ftdi.cfg"
   ],
   "idf.port": "detect",
   "idf.currentSetup": "C:\\esp\\v6.0.1\\esp-idf",
@@ -14,6 +14,6 @@
     "--query-driver=**",
     "--compile-commands-dir=c:\\Users\\empfo\\Desktop\\Plant_Irigation\\build"
   ],
-  "idf.portWin": "COM4",
+  "idf.portWin": "COM3",
   "idf.flashType": "UART"
 }

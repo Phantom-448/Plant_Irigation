@@ -4,8 +4,8 @@
 #define GPIO_RELAY           10
 
 // SPI pins for the SD-card module
-#define GPIO_SD_MISO         5
-#define GPIO_SD_MOSI         6
+#define GPIO_SD_MISO         6 
+#define GPIO_SD_MOSI         5
 #define GPIO_SD_SCLK         4
 #define GPIO_SD_CS           7
 
