@@ -199,7 +199,6 @@ void sd_card_monitor_task(void *pvParameters) {
     }
 }
 
-// Ein Profil speichern (z.B. "sommer.json")
 void save_profile(const char* profil_name, const char* json_string) {
     char filepath[64];
     snprintf(filepath, sizeof(filepath), "%s/%s.json", SD_PROFILE_DIR, profil_name);
@@ -226,7 +225,6 @@ void sd_write_log(const char* log_line) {
     fclose(f);
 }
 
-// Ein Profil laden und auf der Konsole ausgeben
 void load_profile(const char* profil_name) {
     char filepath[64];
     snprintf(filepath, sizeof(filepath), "%s/%s.json", SD_PROFILE_DIR, profil_name);
@@ -237,11 +235,10 @@ void load_profile(const char* profil_name) {
         return;
     }
 
-    // Datei einlesen
     char line[128];
     ESP_LOGI(TAG, "--- Lese Profil: %s ---", profil_name);
     while (fgets(line, sizeof(line), f) != NULL) {
-        printf("%s", line); // Gibt das JSON im Terminal aus
+        printf("%s", line); 
     }
     printf("\n");
     fclose(f);

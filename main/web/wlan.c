@@ -97,20 +97,20 @@ void wifi_init_sta(void)
 
     wifi_config_t wifi_config = {
         .sta = {
-            // Diese Werte werden aus secrets.h geladen
-            .ssid = MY_WIFI_SSID,
-            .password = MY_WIFI_PASS,
+            
+            .ssid = WIFI_SSID,
+            .password = WIFI_PASS,
             .threshold.authmode = WIFI_AUTH_WPA2_PSK,
         },
     };
 
-    ESP_LOGI(TAG, "Verbinde zu SSID '%s'...", MY_WIFI_SSID);
+    ESP_LOGI(TAG, "Verbinde zu SSID '%s'...", WIFI_SSID);
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA) );
     ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_config) );
     ESP_ERROR_CHECK(esp_wifi_start() );
     ESP_LOGI(TAG, "WiFi-Station gestartet, Verbindungsversuch läuft.");
 
-    // Warten, bis die Verbindung steht oder fehlgeschlagen ist
+
     EventBits_t bits = xEventGroupWaitBits(s_wifi_event_group,
             WIFI_CONNECTED_BIT | WIFI_FAIL_BIT,
             pdFALSE,
@@ -118,12 +118,12 @@ void wifi_init_sta(void)
             portMAX_DELAY);
 
     if (bits & WIFI_CONNECTED_BIT) {
-        ESP_LOGI(TAG, "Verbunden mit SSID: %s", MY_WIFI_SSID);
-        // Innerhalb der WLAN-Event-Logik oder nach wifi_init_sta()
-        start_mdns_service(); // Hier aktivieren
+        ESP_LOGI(TAG, "Verbunden mit SSID: %s", WIFI_SSID);
+        
+        start_mdns_service(); 
         start_webserver();
 
     } else if (bits & WIFI_FAIL_BIT) {
-        ESP_LOGI(TAG, "Verbindung zu SSID: %s fehlgeschlagen", MY_WIFI_SSID);
+        ESP_LOGI(TAG, "Verbindung zu SSID: %s fehlgeschlagen", WIFI_SSID);
     }
 }

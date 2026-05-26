@@ -21,9 +21,9 @@ typedef struct {
     float current_temp;
     float air_humidity;
     int soil_moisture_1;
-    int soil_moisture_2;
+
     
-    WateringProfile_t active_profile; // <--- NEU: Das aktuell geladene Profil
+    WateringProfile_t active_profile; 
 } SystemState_t;
 
 // 'extern' sagt dem Compiler: Diese Variable existiert, ist aber in der .c Datei definiert

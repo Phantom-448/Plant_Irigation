@@ -9,6 +9,8 @@ extern "C" {
 #endif
 
 bool dht22_read(gpio_num_t pin, float *out_temp_c, float *out_humidity);
+bool c_humid_read(gpio_num_t pin, float *out_humidity);
+
 
 #ifdef __cplusplus
 }

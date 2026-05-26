@@ -5,7 +5,7 @@
 #include "freertos/task.h"
 #include <time.h>
 #include <stdio.h>
-#include "cjson.h"
+#include "cJSON.h"
 
 #include "state.h"
 #include "wlan.h"
@@ -41,11 +41,10 @@ static void timer_cycle_callback(void) {
     }
 
     // 2. Regel 1: Ist die Erde feucht genug?
-    // Wenn Feuchtigkeit HÖHER als der Schwellenwert ist -> Abbruch, nicht wässern!
     if (moisture > current_profile.min_soil_moisture_percent) {
         ESP_LOGI("SMART_LOGIC", "Erde ist feucht genug (%d%% > %d%%). Wässern übersprungen.", 
                  moisture, current_profile.min_soil_moisture_percent);
-        return; // Callback beenden!
+        return;
     }
 
     // 3. Regel 2: Dauer berechnen
@@ -64,21 +63,14 @@ static void timer_cycle_callback(void) {
     actor_start_timed_watering(duration);
 }
 
-/**
- * Sensor-Task: Liest periodisch die Daten aus.
- * FreeRTOS ermöglicht die Ausführung mehrerer Tasks gleichzeitig.
- */
 void sensor_reading_task(void *pvParameters) {
     while (1) {
-        // Temperatur vom internen System-Sensor lesen und filtern
+
         float t = temp_sensor_read_filtered();
-        
-        // Luftfeuchtigkeit lesen und filtern
         float h = humid_sensor_read_filtered();
 
         ESP_LOGI(TAG, "Sensoren aktualisiert: Temp=%.2f°C, Humid=%.2f%%", t, h);
 
-        // Alle 5 Sekunden messen
         vTaskDelay(pdMS_TO_TICKS(5000));
     }
 }
@@ -87,7 +79,7 @@ void sensor_reading_task(void *pvParameters) {
 void app_main(void) {
     ESP_LOGI(TAG, "Starte Garten-Bewässerung auf ESP32-C3...");
 
-    // 1. NVS (Flash) initialisieren (Pflicht für WLAN-Datenhaltung)[cite: 1]
+    // 1. NVS (Flash) initialisieren (Pflicht für WLAN-Datenhaltung)
     esp_err_t ret = nvs_flash_init();
     if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
         ESP_ERROR_CHECK(nvs_flash_erase());
@@ -96,7 +88,7 @@ void app_main(void) {
     ESP_ERROR_CHECK(ret);
     ESP_LOGI(TAG, "NVS erfolgreich initialisiert.");
 
-    // 2. Globalen Systemstatus & Mutex initialisieren[cite: 1]
+    // 2. Globalen Systemstatus & Mutex initialisieren
     state_init();
     ESP_LOGI(TAG, "Systemzustand und Mutex initialisiert.");
 
@@ -108,22 +100,33 @@ void app_main(void) {
     } else {
         ESP_LOGW(TAG, "SD-Karten-Selbsttest fehlgeschlagen oder SD nicht verfügbar.");
     }
-    scan_profiles_on_sd(); // SD-Karte nach Bewässerungsprofilen durchsuchen
+    scan_profiles_on_sd();
 
-    // 3. Hardware-Peripherie initialisieren (I2C-Bus & Sensoren)
+    // 3. Hardware-Peripherie initialisieren
     temp_sensor_init();
     ESP_LOGI(TAG, "Temperatursensor initialisiert.");
     ESP_LOGI(TAG, "Initialisiere Feuchtigkeitssensor...");
-    humid_sensor_init(); // Externer Feuchtigkeitssensor
+    humid_sensor_init(); 
     ESP_LOGI(TAG, "Feuchtigkeitssensor initialisiert.");
     ESP_LOGI(TAG, "Initialisiere Aktor...");
-    actor_init();        // Aktor-Initialisierung
+    actor_init();        
     ESP_LOGI(TAG, "Aktor initialisiert.");
 
-    // 3b. Timer für zyklische Bewässerung initialisieren
     timer_init();
     timer_register_callback(timer_cycle_callback);
-    timer_start_cycle(60, 5); // Zyklus: alle 60 Minuten, Bewässerungsdauer 5 Minuten
+    
+    // Lade Zyklus-Intervall und Basis-Bewässerungsdauer aus dem aktiven Profil
+    int cycle_interval_minutes = 60;
+    int watering_duration_minutes = 5;
+    if (xSemaphoreTake(state_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+        cycle_interval_minutes = sys_state.active_profile.check_interval_minutes;
+        watering_duration_minutes = sys_state.active_profile.base_watering_minutes;
+        xSemaphoreGive(state_mutex);
+    } else {
+        ESP_LOGW(TAG, "Konnte aktives Profil nicht lesen, verwende Standardwerte");
+    }
+
+    timer_start_cycle(cycle_interval_minutes, watering_duration_minutes);
     timer_start_logging(logger_write_sensor_data);
     ESP_LOGI(TAG, "Zyklischer Bewässerungstimer gestartet.");
 
@@ -131,12 +134,7 @@ void app_main(void) {
     ESP_LOGI(TAG, "Starte WLAN-Station...");
     wifi_init_sta();     // WLAN starten
 
-
-    // 5. Webserver wird automatisch in wifi_init_sta() gestartet
-    // nach erfolgreicher WiFi-Verbindung
-
-    // 6. Sensor-Lese-Task starten
-    // Wir nutzen FreeRTOS, um die Sensoren im Hintergrund zu verarbeiten[cite: 1].
+    // 5. Webserver starten
     xTaskCreate(sensor_reading_task, "sensor_task", 4096, NULL, 5, NULL);
 
     ESP_LOGI(TAG, "System erfolgreich gestartet. Web-Dashboard bereit.");

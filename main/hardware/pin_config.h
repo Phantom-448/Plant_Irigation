@@ -18,6 +18,10 @@
 // DHT22 Pin (falls angeschlossen)
 #define GPIO_DHT22           2
 
+// Optionaler kapazitiver Luftfeuchtesensor (VCC, GND, DATA)
+// Uncomment and set the pin if you use a second one-wire humidity sensor
+// #define GPIO_CHUMID         3
+
 // SD card filesystem mount points and directories
 #define SD_MOUNT_POINT       "/sdcard"
 #define SD_LOG_DIR           SD_MOUNT_POINT "/logs"

@@ -8,8 +8,7 @@
 
 static const char *TAG = "DHT22";
 
-static int64_t wait_for_level(gpio_num_t pin, int level, uint32_t timeout_us)
-{
+static int64_t wait_for_level(gpio_num_t pin, int level, uint32_t timeout_us){
     int64_t start = esp_timer_get_time();
     while (gpio_get_level(pin) != level) {
         if ((uint32_t)(esp_timer_get_time() - start) > timeout_us) {
@@ -19,10 +18,7 @@ static int64_t wait_for_level(gpio_num_t pin, int level, uint32_t timeout_us)
     return esp_timer_get_time() - start;
 }
 
-bool dht22_read(gpio_num_t pin, float *out_temp_c, float *out_humidity)
-{
-    uint8_t data[5] = {0};
-
+static bool dht22_read_raw(gpio_num_t pin, uint8_t data[5]){
     gpio_set_direction(pin, GPIO_MODE_OUTPUT);
     gpio_set_level(pin, 1);
     vTaskDelay(pdMS_TO_TICKS(200));
@@ -77,11 +73,31 @@ bool dht22_read(gpio_num_t pin, float *out_temp_c, float *out_humidity)
         return false;
     }
 
+    return true;
+}
+
+bool dht22_read(gpio_num_t pin, float *out_temp_c, float *out_humidity){
+    uint8_t data[5] = {0};
+    if (!dht22_read_raw(pin, data)) {
+        return false;
+    }
+
     *out_humidity = ((data[0] << 8) | data[1]) / 10.0f;
     *out_temp_c = (((data[2] & 0x7F) << 8) | data[3]) / 10.0f;
     if (data[2] & 0x80) {
         *out_temp_c = -(*out_temp_c);
     }
 
+    return true;
+}
+
+bool c_humid_read(gpio_num_t pin, float *out_humidity){
+    uint8_t data[5] = {0};
+    if (!dht22_read_raw(pin, data)) {
+        ESP_LOGW(TAG, "C_HUMID checksum failure or bus error on GPIO %d", pin);
+        return false;
+    }
+
+    *out_humidity = ((data[0] << 8) | data[1]) / 10.0f;
     return true;
 }

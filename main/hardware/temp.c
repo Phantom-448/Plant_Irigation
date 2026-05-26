@@ -9,7 +9,7 @@
 #include "esp_system.h"
 #include "esp_random.h"
 
-#ifdef GPIO_DHT22
+#if defined(GPIO_DHT22) || defined(GPIO_CHUMID)
 #include "dht22.h"
 #endif
 
@@ -51,7 +51,7 @@ float temp_sensor_read_filtered(void) {
         float jitter = (float)(r % 100) / 100.0f - 0.5f; 
         new_sample = filtered_temp + jitter * 0.2f; 
     }
-#ifdef GPIO_DHT22
+#if defined(GPIO_DHT22)
     else {
         float temp_c = 0.0f, humidity = 0.0f;
         if (dht22_read((gpio_num_t)GPIO_DHT22, &temp_c, &humidity)) {
@@ -67,8 +67,7 @@ float temp_sensor_read_filtered(void) {
             new_sample = filtered_temp; // Fallback auf den alten Wert, kein Abbruch!
         }
     }
-#endif
-#ifndef GPIO_DHT22
+#else
     else {
         temperature_sensor_handle_t temp_sensor = NULL;
         temperature_sensor_config_t temp_sensor_config = TEMPERATURE_SENSOR_CONFIG_DEFAULT(10, 50);
@@ -83,6 +82,19 @@ float temp_sensor_read_filtered(void) {
             temperature_sensor_uninstall(temp_sensor);
         }
         if (new_sample < -500.0f) new_sample = filtered_temp;
+    }
+#endif
+#if defined(GPIO_CHUMID)
+    {
+        float capacitive_humidity = 0.0f;
+        if (c_humid_read((gpio_num_t)GPIO_CHUMID, &capacitive_humidity)) {
+            if (xSemaphoreTake(state_mutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+                sys_state.capacitive_humidity = capacitive_humidity;
+                xSemaphoreGive(state_mutex);
+            }
+        } else {
+            ESP_LOGW(TAG, "Failed to read C_HUMID sensor. Nutze letzten bekannten Wert.");
+        }
     }
 #endif
 

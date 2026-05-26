@@ -67,6 +67,7 @@ static bool parse_json_bool(const char *src, const char *key, bool *out) {
 static esp_err_t status_get_handler(httpd_req_t *req) {
     float temperature = 0.0f;
     float air_humidity = 0.0f;
+    float capacitive_humidity = 0.0f;
     int soil_moisture = 0;
     int seconds_to_next = timer_get_seconds_to_next_cycle();
     bool pump_running = actor_get_state();
@@ -76,15 +77,17 @@ static esp_err_t status_get_handler(httpd_req_t *req) {
     if (xSemaphoreTake(state_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
         temperature = sys_state.current_temp;
         air_humidity = sys_state.air_humidity;
+        capacitive_humidity = sys_state.capacitive_humidity;
         soil_moisture = sys_state.soil_moisture_1;
         xSemaphoreGive(state_mutex);
     }
 
     char response[256];
     int len = snprintf(response, sizeof(response),
-        "{\"temperature\": %.1f, \"air_humidity\": %.1f, \"soil_moisture_1\": %d, \"pump_running\": %s, \"seconds_to_next_water\": %d, \"cycle_interval_minutes\": %d, \"watering_duration_minutes\": %d}",
+        "{\"temperature\": %.1f, \"air_humidity\": %.1f, \"capacitive_humidity\": %.1f, \"soil_moisture_1\": %d, \"pump_running\": %s, \"seconds_to_next_water\": %d, \"cycle_interval_minutes\": %d, \"watering_duration_minutes\": %d}",
         temperature,
         air_humidity,
+        capacitive_humidity,
         soil_moisture,
         pump_running ? "true" : "false",
         seconds_to_next,

@@ -79,8 +79,9 @@ Desktop.ini
 *.suo       # Visual Studio Solution User Options
 *.sln.docstates # Visual Studio
 
-*.vscode/
-*.devcontainer/ # If using Dev Containers in VS Code
+# VS Code and Dev Container settings
+.vscode/
+.devcontainer/
 
 secrets.h # Local configuration file with sensitive data, not to be shared
 # Lokale Passwörter und Configs ignorieren

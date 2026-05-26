@@ -6,7 +6,6 @@ SystemState_t sys_state = {
     .watering_duration = 10,
     .current_temp = 0.0f,
     .air_humidity = 0.0f,
-    .soil_moisture_1 = 0,
     .soil_moisture_2 = 0,
     .active_profile = {
         .profile_name = "default",

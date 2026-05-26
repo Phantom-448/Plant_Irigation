@@ -20,16 +20,17 @@ void logger_write_sensor_data(void) {
     
     // 2. Daten sicher aus dem State holen und als CSV formatieren
     if (xSemaphoreTake(state_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
-        snprintf(log_buffer, sizeof(log_buffer), "%s,%.1f,%.1f,%d,%d",
+        snprintf(log_buffer, sizeof(log_buffer), "%s,%.1f,%.1f,%.1f,%d,%d",
                  time_str,
                  sys_state.current_temp,
                  sys_state.air_humidity,
+                 sys_state.capacitive_humidity,
                  sys_state.soil_moisture_1,
                  sys_state.valve_1_state ? 1 : 0);
                  
         xSemaphoreGive(state_mutex);
         
-        // 3. An den "Archivar" (SD-Modul) übergeben
+        // 3. An das SD-Modul übergeben
         sd_write_log(log_buffer);
         ESP_LOGI("LOGGER", "Eintrag gespeichert: %s", log_buffer);
     } else {
