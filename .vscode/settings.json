@@ -4,7 +4,7 @@
     "board/esp32c3-ftdi.cfg"
   ],
   "idf.port": "detect",
-  "idf.currentSetup": "C:\\esp\\v6.0.1\\esp-idf",
+  "idf.currentSetup": "/home/epr/.espressif/v6.0.1/esp-idf",
   "idf.customExtraVars": {
     "IDF_TARGET": "esp32c3"
   },

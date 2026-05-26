@@ -10,6 +10,8 @@
 #include "state.h"
 #include "wlan.h"
 #include "webserver.h"
+#include "button.h"
+#include "secrets.h"
 #include "temp.h"
 #include "humid.h"
 #include "actor.h"
@@ -63,23 +65,47 @@ static void timer_cycle_callback(void) {
     actor_start_timed_watering(duration);
 }
 
-void sensor_reading_task(void *pvParameters) {
-    while (1) {
+static void button_pressed_handler(void *arg)
+{
+    int watering_duration = timer_get_watering_duration_minutes();
+    int cycle_interval = timer_get_cycle_interval_minutes();
 
-        float t = temp_sensor_read_filtered();
-        float h = humid_sensor_read_filtered();
-
-        ESP_LOGI(TAG, "Sensoren aktualisiert: Temp=%.2f°C, Humid=%.2f%%", t, h);
-
-        vTaskDelay(pdMS_TO_TICKS(5000));
+    if (watering_duration <= 0) {
+        watering_duration = 5;
     }
+    if (cycle_interval <= 0) {
+        cycle_interval = 60;
+    }
+
+    ESP_LOGI(TAG, "Button gedrückt: manuelle Bewässerung starten und Zyklus zurücksetzen");
+    actor_start_timed_watering(watering_duration);
+    timer_start_cycle(cycle_interval, watering_duration);
 }
 
+xTaskHandle_t sensor_reading_task_handle = NULL;
+void sensor_reading_task(void *pvParameters) {
+    while (1) {
+        float temp = read_temperature();
+        float humidity = read_humidity();
+        int soil_moisture = read_soil_moisture();
+        ESP_LOGI("SENSOR_TASK", "Sensorwerte - Temp: %.1f°C, Luftfeuchtigkeit: %.1f%%, Bodenfeuchte: %d%%", 
+                 temp, humidity, soil_moisture);
+
+        if (xSemaphoreTake(state_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+            sys_state.current_temp = temp;
+            sys_state.current_humidity = humidity;
+            sys_state.soil_moisture_1 = soil_moisture;
+            xSemaphoreGive(state_mutex);
+        } else {
+            ESP_LOGE("SENSOR_TASK", "Konnte State nicht aktualisieren!");
+        }
+        vTaskDelay(pdMS_TO_TICKS(60000)); // Alle 60 Sekunden lesen
+    }
+}
 
 void app_main(void) {
     ESP_LOGI(TAG, "Starte Garten-Bewässerung auf ESP32-C3...");
 
-    // 1. NVS (Flash) initialisieren (Pflicht für WLAN-Datenhaltung)
     esp_err_t ret = nvs_flash_init();
     if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
         ESP_ERROR_CHECK(nvs_flash_erase());
@@ -88,21 +114,9 @@ void app_main(void) {
     ESP_ERROR_CHECK(ret);
     ESP_LOGI(TAG, "NVS erfolgreich initialisiert.");
 
-    // 2. Globalen Systemstatus & Mutex initialisieren
     state_init();
     ESP_LOGI(TAG, "Systemzustand und Mutex initialisiert.");
 
-    init_sd_card();      // SD-Karte initialisieren
-    xTaskCreate(sd_card_monitor_task, "sd_monitor", 4096, NULL, 5, NULL);
-
-    if (sd_card_self_test()) {
-        ESP_LOGI(TAG, "SD-Karten-Selbsttest erfolgreich.");
-    } else {
-        ESP_LOGW(TAG, "SD-Karten-Selbsttest fehlgeschlagen oder SD nicht verfügbar.");
-    }
-    scan_profiles_on_sd();
-
-    // 3. Hardware-Peripherie initialisieren
     temp_sensor_init();
     ESP_LOGI(TAG, "Temperatursensor initialisiert.");
     ESP_LOGI(TAG, "Initialisiere Feuchtigkeitssensor...");
@@ -112,10 +126,25 @@ void app_main(void) {
     actor_init();        
     ESP_LOGI(TAG, "Aktor initialisiert.");
 
+    if (!button_init(GPIO_BUTTON)) {
+        ESP_LOGW(TAG, "Taster konnte nicht initialisiert werden");
+    } else {
+        button_set_callback(button_pressed_handler, NULL);
+    }
+
+    init_sd_card();   
+    xTaskCreate(sd_card_monitor_task, "sd_monitor", 4096, NULL, 5, NULL);
+
+    if (sd_card_self_test()) {
+        ESP_LOGI(TAG, "SD-Karten-Selbsttest erfolgreich.");
+    } else {
+        ESP_LOGW(TAG, "SD-Karten-Selbsttest fehlgeschlagen oder SD nicht verfügbar.");
+    }
+    scan_profiles_on_sd();
+
     timer_init();
     timer_register_callback(timer_cycle_callback);
     
-    // Lade Zyklus-Intervall und Basis-Bewässerungsdauer aus dem aktiven Profil
     int cycle_interval_minutes = 60;
     int watering_duration_minutes = 5;
     if (xSemaphoreTake(state_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
@@ -130,12 +159,15 @@ void app_main(void) {
     timer_start_logging(logger_write_sensor_data);
     ESP_LOGI(TAG, "Zyklischer Bewässerungstimer gestartet.");
 
-    // 4. Netzwerk-Verbindungen herstellen
     ESP_LOGI(TAG, "Starte WLAN-Station...");
-    wifi_init_sta();     // WLAN starten
+    if (wifi_init_sta()) {
+        ESP_LOGI(TAG, "Verbunden mit SSID: %s", WIFI_SSID);
+        start_mdns_service();
+        start_webserver();
+    } else {
+        ESP_LOGI(TAG, "Verbindung zu SSID: %s fehlgeschlagen", WIFI_SSID);
+    }
 
-    // 5. Webserver starten
     xTaskCreate(sensor_reading_task, "sensor_task", 4096, NULL, 5, NULL);
-
     ESP_LOGI(TAG, "System erfolgreich gestartet. Web-Dashboard bereit.");
 }

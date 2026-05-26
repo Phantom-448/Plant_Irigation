@@ -7,7 +7,20 @@
 #include <stdbool.h>
 
 static bool s_actor_state = false;
+static TaskHandle_t s_watering_task = NULL;
 
+static void watering_task(void *pvParameters)
+{
+    int minutes = (int)(intptr_t)pvParameters;
+    ESP_LOGI("ACTOR", "Starte manuelle Bewässerung für %d Minuten", minutes);
+    actor_set_relay(true);
+    if (minutes > 0) {
+        vTaskDelay(pdMS_TO_TICKS((uint32_t)minutes * 60000));
+    }
+    actor_set_relay(false);
+    s_watering_task = NULL;
+    vTaskDelete(NULL);
+}
 
 void actor_init(void) {
     gpio_config_t io_conf = {
@@ -25,4 +38,31 @@ void actor_set_relay(bool off) {
     s_actor_state = off;
     gpio_set_level(GPIO_RELAY, off ? 1 : 0);
     ESP_LOGI("ACTOR", "Relais %s", off ? "EIN" : "AUS");
+}
+
+void actor_start_timed_watering(int minutes)
+{
+    if (minutes <= 0) {
+        ESP_LOGW("ACTOR", "Ungültige Bewässerungsdauer: %d Minuten", minutes);
+        return;
+    }
+
+    if (s_watering_task != NULL) {
+        ESP_LOGW("ACTOR", "Bestehende Bewässerung abbrechen und neu starten");
+        actor_set_relay(false);
+        vTaskDelete(s_watering_task);
+        s_watering_task = NULL;
+    }
+
+    BaseType_t result = xTaskCreate(watering_task,
+                                    "watering_task",
+                                    3072,
+                                    (void *)(intptr_t)minutes,
+                                    5,
+                                    &s_watering_task);
+    if (result != pdPASS) {
+        ESP_LOGE("ACTOR", "Bewässerungs-Task konnte nicht gestartet werden");
+        actor_set_relay(false);
+        s_watering_task = NULL;
+    }
 }

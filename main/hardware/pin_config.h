@@ -22,6 +22,9 @@
 // Uncomment and set the pin if you use a second one-wire humidity sensor
 // #define GPIO_CHUMID         3
 
+// GPIO für den manuellen Taster (Pulldown)
+#define GPIO_BUTTON          12
+
 // SD card filesystem mount points and directories
 #define SD_MOUNT_POINT       "/sdcard"
 #define SD_LOG_DIR           SD_MOUNT_POINT "/logs"
