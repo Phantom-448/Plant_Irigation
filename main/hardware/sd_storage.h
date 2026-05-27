@@ -11,5 +11,6 @@ void sd_write_log(const char* log_line);
 void save_profile(const char* profil_name, const char* json_string);
 void load_profile(const char* profil_name);
 void sd_card_monitor_task(void *pvParameters);
+void sd_card_retry_mount(void);
 
 #endif // SD_STORAGE_H

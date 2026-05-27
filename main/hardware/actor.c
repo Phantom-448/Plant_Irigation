@@ -1,25 +1,26 @@
-// In actor.c
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "driver/gpio.h"
 #include "pin_config.h"
+#include "state.h"
 #include <esp_log.h>
 #include <stdbool.h>
 
 static bool s_actor_state = false;
 static TaskHandle_t s_watering_task = NULL;
 
-static void watering_task(void *pvParameters)
-{
-    int minutes = (int)(intptr_t)pvParameters;
-    ESP_LOGI("ACTOR", "Starte manuelle Bewässerung für %d Minuten", minutes);
-    actor_set_relay(true);
-    if (minutes > 0) {
-        vTaskDelay(pdMS_TO_TICKS((uint32_t)minutes * 60000));
+void actor_set_relay(bool on) {
+    s_actor_state = on;
+    gpio_set_level(GPIO_RELAY, on ? 1 : 0);
+
+    if (xSemaphoreTake(state_mutex, pdMS_TO_TICKS(MUTEX_TIMEOUT_MS)) == pdTRUE) {
+        sys_state.valve_1_state = on;
+        xSemaphoreGive(state_mutex);
+        ESP_LOGI("ACTOR", "Relais %s", on ? "EIN" : "AUS");
+    } else {
+        // The hardware changed, but sys_state didn't!
+        ESP_LOGE("ACTOR", "CRITICAL: Relay changed to %s, but sys_state sync timed out!", on ? "EIN" : "AUS");
     }
-    actor_set_relay(false);
-    s_watering_task = NULL;
-    vTaskDelete(NULL);
 }
 
 void actor_init(void) {
@@ -34,10 +35,23 @@ void actor_init(void) {
     actor_set_relay(false);
 }
 
-void actor_set_relay(bool off) {
-    s_actor_state = off;
-    gpio_set_level(GPIO_RELAY, off ? 1 : 0);
-    ESP_LOGI("ACTOR", "Relais %s", off ? "EIN" : "AUS");
+static void watering_task(void *pvParameters)
+{
+    int minutes = (int)(intptr_t)pvParameters;
+    ESP_LOGI("ACTOR", "Starte manuelle Bewässerung für %d Minuten", minutes);
+    actor_set_relay(true);
+    if (minutes > 0) {
+        // Prevent overflow: split long delays into 5-minute chunks
+        uint32_t remaining_minutes = (uint32_t)minutes;
+        while (remaining_minutes > 0) {
+            uint32_t chunk_minutes = (remaining_minutes > 5) ? 5 : remaining_minutes;
+            vTaskDelay(pdMS_TO_TICKS(chunk_minutes * 60000));
+            remaining_minutes -= chunk_minutes;
+        }
+    }
+    actor_set_relay(false);
+    s_watering_task = NULL;
+    vTaskDelete(NULL);
 }
 
 void actor_start_timed_watering(int minutes)

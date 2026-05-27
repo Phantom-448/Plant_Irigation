@@ -70,14 +70,13 @@ static esp_err_t status_get_handler(httpd_req_t *req) {
     float capacitive_humidity = 0.0f;
     int soil_moisture = 0;
     int seconds_to_next = timer_get_seconds_to_next_cycle();
-    bool pump_running = actor_get_state();
+    bool pump_running = sys_state.valve_1_state;
     int cycle_interval = timer_get_cycle_interval_minutes();
     int watering_duration = timer_get_watering_duration_minutes();
 
-    if (xSemaphoreTake(state_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+    if (xSemaphoreTake(state_mutex, pdMS_TO_TICKS(MUTEX_TIMEOUT_MS)) == pdTRUE) {
         temperature = sys_state.current_temp;
         air_humidity = sys_state.air_humidity;
-        capacitive_humidity = sys_state.capacitive_humidity;
         soil_moisture = sys_state.soil_moisture_1;
         xSemaphoreGive(state_mutex);
     }
@@ -233,9 +232,11 @@ static esp_err_t sdcard_test_handler(httpd_req_t *req) {
 void start_webserver(void) {
     httpd_handle_t server = NULL;
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    config.lru_purge_enable = true; // Hilft bei vielen Verbindungen
 
+    config.max_uri_handlers = 16;  // Standard ist 8, wir setzen es auf 16
+    config.lru_purge_enable = true; 
     config.uri_match_fn = httpd_uri_match_wildcard;
+    
 
     ESP_LOGI(TAG, "Starte HTTP-Server...");
     if (httpd_start(&server, &config) == ESP_OK) {

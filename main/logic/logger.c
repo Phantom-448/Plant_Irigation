@@ -1,6 +1,7 @@
 // --- logger.c ---
 #include "logger.h"
 #include "state.h"
+#include "pin_config.h"
 #include <time.h>
 #include <stdio.h>
 #include "esp_log.h"
@@ -19,12 +20,11 @@ void logger_write_sensor_data(void) {
     char log_buffer[128];
     
     // 2. Daten sicher aus dem State holen und als CSV formatieren
-    if (xSemaphoreTake(state_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
-        snprintf(log_buffer, sizeof(log_buffer), "%s,%.1f,%.1f,%.1f,%d,%d",
+    if (xSemaphoreTake(state_mutex, pdMS_TO_TICKS(MUTEX_TIMEOUT_MS)) == pdTRUE) {
+        snprintf(log_buffer, sizeof(log_buffer), "%s,%.1f,%.1f,%d,%d\n",
                  time_str,
                  sys_state.current_temp,
                  sys_state.air_humidity,
-                 sys_state.capacitive_humidity,
                  sys_state.soil_moisture_1,
                  sys_state.valve_1_state ? 1 : 0);
                  

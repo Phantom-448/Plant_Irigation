@@ -40,7 +40,13 @@ static void timer_task(void *pvParameters)
 
         if (s_watering_duration_minutes > 0) {
             ESP_LOGI(TAG, "Bewässerung läuft %d Minuten", s_watering_duration_minutes);
-            vTaskDelay(pdMS_TO_TICKS((uint32_t)s_watering_duration_minutes * 60000));
+            // Split watering delays into 5-minute chunks to prevent overflow
+            uint32_t remaining_minutes = (uint32_t)s_watering_duration_minutes;
+            while (remaining_minutes > 0) {
+                uint32_t chunk_minutes = (remaining_minutes > 5) ? 5 : remaining_minutes;
+                vTaskDelay(pdMS_TO_TICKS(chunk_minutes * 60000));
+                remaining_minutes -= chunk_minutes;
+            }
         }
     }
 

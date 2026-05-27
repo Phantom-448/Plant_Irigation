@@ -1,10 +1,9 @@
 #include <stdio.h>
+#include <time.h>
 #include "nvs_flash.h"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
-#include <time.h>
-#include <stdio.h>
 #include "cJSON.h"
 
 #include "state.h"
@@ -12,13 +11,15 @@
 #include "webserver.h"
 #include "button.h"
 #include "secrets.h"
-#include "temp.h"
-#include "humid.h"
 #include "actor.h"
 #include "timer.h"
 #include "sd_storage.h"
 #include "profile_manager.h"
 #include "logger.h"
+#include "soil.h"
+#include "dht22.h"
+#include "pin_config.h"
+
 
 
 static const char *TAG = "MAIN_APP";
@@ -32,7 +33,7 @@ static void timer_cycle_callback(void) {
     WateringProfile_t current_profile;
 
     // 1. Snapshot der Daten sicher aus dem State holen
-    if (xSemaphoreTake(state_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+    if (xSemaphoreTake(state_mutex, pdMS_TO_TICKS(MUTEX_TIMEOUT_MS)) == pdTRUE) {
         moisture = sys_state.soil_moisture_1;
         temp = sys_state.current_temp;
         current_profile = sys_state.active_profile; // Kopie des structs
@@ -82,92 +83,123 @@ static void button_pressed_handler(void *arg)
     timer_start_cycle(cycle_interval, watering_duration);
 }
 
-xTaskHandle_t sensor_reading_task_handle = NULL;
 void sensor_reading_task(void *pvParameters) {
+    // Lokale Variablen für die DHT22-Messung mit sicheren Startwerten (Fallbacks)
+    float last_valid_temp = 22.0f;
+    float last_valid_humidity = 50.0f;
+
     while (1) {
-        float temp = read_temperature();
-        float humidity = read_humidity();
+        float temp = 0.0f;
+        float humidity = 0.0f;
+        
+        // 1. Echte Hardware-Messung des DHT22 starten
+        // Wir übergeben den Pin aus pin_config.h und die Adressen der Variablen via Zeiger
+        bool dht_ok = dht22_read(GPIO_DHT22, &temp, &humidity);
+        
+        if (dht_ok) {
+            // Wenn die Checksumme stimmt, sichern wir die Werte als Backup
+            last_valid_temp = temp;
+            last_valid_humidity = humidity;
+        } else {
+            // Fehlerfall: Keine Antwort vom Sensor oder kaputte Checksumme
+            ESP_LOGW("SENSOR_TASK", "Konnte DHT22-Sensor nicht lesen (GPIO %d). Nutze letzten bekannten Wert.", GPIO_DHT22);
+            temp = last_valid_temp;
+            humidity = last_valid_humidity;
+        }
+
+        // 2. Echte Hardware-Messung der Bodenfeuchtigkeit aus soil.c laden
         int soil_moisture = read_soil_moisture();
+
         ESP_LOGI("SENSOR_TASK", "Sensorwerte - Temp: %.1f°C, Luftfeuchtigkeit: %.1f%%, Bodenfeuchte: %d%%", 
                  temp, humidity, soil_moisture);
 
-        if (xSemaphoreTake(state_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+        // 3. Werte sicher unter Mutex-Schutz in den globalen Zustand (sys_state) schreiben
+        if (xSemaphoreTake(state_mutex, pdMS_TO_TICKS(MUTEX_TIMEOUT_MS)) == pdTRUE) {
             sys_state.current_temp = temp;
-            sys_state.current_humidity = humidity;
+            sys_state.air_humidity = humidity;
             sys_state.soil_moisture_1 = soil_moisture;
             xSemaphoreGive(state_mutex);
         } else {
-            ESP_LOGE("SENSOR_TASK", "Konnte State nicht aktualisieren!");
+            ESP_LOGE("SENSOR_TASK", "Konnte Mutex nicht sperren. State nicht aktualisiert!");
         }
-        vTaskDelay(pdMS_TO_TICKS(60000)); // Alle 60 Sekunden lesen
+
+        // Alle 60 Sekunden erneut messen
+        vTaskDelay(pdMS_TO_TICKS(60000)); 
     }
 }
 
 void app_main(void) {
     ESP_LOGI(TAG, "Starte Garten-Bewässerung auf ESP32-C3...");
 
+    // 1. Basis-Subsysteme initialisieren
     esp_err_t ret = nvs_flash_init();
     if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
         ESP_ERROR_CHECK(nvs_flash_erase());
         ret = nvs_flash_init();
     }
     ESP_ERROR_CHECK(ret);
-    ESP_LOGI(TAG, "NVS erfolgreich initialisiert.");
-
+    
     state_init();
-    ESP_LOGI(TAG, "Systemzustand und Mutex initialisiert.");
-
-    temp_sensor_init();
-    ESP_LOGI(TAG, "Temperatursensor initialisiert.");
-    ESP_LOGI(TAG, "Initialisiere Feuchtigkeitssensor...");
-    humid_sensor_init(); 
-    ESP_LOGI(TAG, "Feuchtigkeitssensor initialisiert.");
-    ESP_LOGI(TAG, "Initialisiere Aktor...");
     actor_init();        
-    ESP_LOGI(TAG, "Aktor initialisiert.");
 
+    // 2. Peripherie & Taster
     if (!button_init(GPIO_BUTTON)) {
         ESP_LOGW(TAG, "Taster konnte nicht initialisiert werden");
     } else {
         button_set_callback(button_pressed_handler, NULL);
     }
 
+    // 3. Speicher (SD-Karte)
     init_sd_card();   
-    xTaskCreate(sd_card_monitor_task, "sd_monitor", 4096, NULL, 5, NULL);
+    xTaskCreate(sd_card_monitor_task, "sd_monitor", 3072, NULL, 5, NULL);
 
     if (sd_card_self_test()) {
         ESP_LOGI(TAG, "SD-Karten-Selbsttest erfolgreich.");
+        scan_profiles_on_sd();
     } else {
-        ESP_LOGW(TAG, "SD-Karten-Selbsttest fehlgeschlagen oder SD nicht verfügbar.");
+        ESP_LOGW(TAG, "SD-Karten-Selbsttest fehlgeschlagen.");
     }
-    scan_profiles_on_sd();
 
+    // 4. Zeitsteuerung & Logik
     timer_init();
     timer_register_callback(timer_cycle_callback);
     
     int cycle_interval_minutes = 60;
     int watering_duration_minutes = 5;
-    if (xSemaphoreTake(state_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+    if (xSemaphoreTake(state_mutex, pdMS_TO_TICKS(MUTEX_TIMEOUT_MS)) == pdTRUE) {
         cycle_interval_minutes = sys_state.active_profile.check_interval_minutes;
         watering_duration_minutes = sys_state.active_profile.base_watering_minutes;
         xSemaphoreGive(state_mutex);
-    } else {
-        ESP_LOGW(TAG, "Konnte aktives Profil nicht lesen, verwende Standardwerte");
     }
 
     timer_start_cycle(cycle_interval_minutes, watering_duration_minutes);
     timer_start_logging(logger_write_sensor_data);
-    ESP_LOGI(TAG, "Zyklischer Bewässerungstimer gestartet.");
 
-    ESP_LOGI(TAG, "Starte WLAN-Station...");
+    // 5. Netzwerk-Infrastruktur
     if (wifi_init_sta()) {
-        ESP_LOGI(TAG, "Verbunden mit SSID: %s", WIFI_SSID);
         start_mdns_service();
         start_webserver();
-    } else {
-        ESP_LOGI(TAG, "Verbindung zu SSID: %s fehlgeschlagen", WIFI_SSID);
     }
 
-    xTaskCreate(sensor_reading_task, "sensor_task", 4096, NULL, 5, NULL);
-    ESP_LOGI(TAG, "System erfolgreich gestartet. Web-Dashboard bereit.");
+    // 6. Hintergrund-Tasks starten
+    xTaskCreate(sensor_reading_task, "sensor_task", 3072, NULL, 5, NULL);
+
+    // 7. Status-LED Konfiguration
+    gpio_config_t led_conf = {
+        .pin_bit_mask = (1ULL << GPIO_LED),
+        .mode = GPIO_MODE_OUTPUT,
+        .pull_up_en = GPIO_PULLUP_DISABLE,
+        .pull_down_en = GPIO_PULLDOWN_DISABLE,
+        .intr_type = GPIO_INTR_DISABLE
+    };
+    gpio_config(&led_conf);
+
+    // Unendliche Heartbeat-Schleife (app_main Task bleibt bestehen)
+    bool led_state = false;
+    while (1) {
+        led_state = !led_state;
+        gpio_set_level(GPIO_LED, led_state ? 1 : 0);
+        ESP_LOGD(TAG, "Heartbeat - LED %s", led_state ? "ON" : "OFF"); // Auf DEBUG geändert, um Log nicht zu fluten
+        vTaskDelay(pdMS_TO_TICKS(1000));
+    }
 }
