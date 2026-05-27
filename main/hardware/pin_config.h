@@ -9,18 +9,15 @@
 #define GPIO_SD_CS           14    
 
 // GPIO für das Relais (Wasserpumpe)
-#define GPIO_RELAY           13   
+#define GPIO_RELAY           4   
 
 // DHT22 Pin (falls angeschlossen)
-#define GPIO_DHT22           7
+#define GPIO_DHT22           12
 
 #define GPIO_SOIL_MOISTURE   36    // ADC1_CHANNEL_0, für Bodenfeuchtigkeitssensor
 
 // GPIO für den manuellen Taster (Pulldown)
-#define GPIO_BUTTON          12
-
-// GPIO für die Status-LED
-#define GPIO_LED             34
+#define GPIO_BUTTON          13
 
 // SD card filesystem mount points and directories
 #define SD_MOUNT_POINT       "/sdcard"

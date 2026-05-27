@@ -21,7 +21,7 @@
 #include "pin_config.h"
 
 
-
+static int WIFI_STATUS = 0; // Setze auf 1, um WLAN-Funktionalität zu aktivieren (SSID/Passwort müssen in secrets.h definiert sein)
 static const char *TAG = "MAIN_APP";
 
 static void timer_cycle_callback(void) {
@@ -84,47 +84,46 @@ static void button_pressed_handler(void *arg)
 }
 
 void sensor_reading_task(void *pvParameters) {
-    // Lokale Variablen für die DHT22-Messung mit sicheren Startwerten (Fallbacks)
-    float last_valid_temp = 22.0f;
-    float last_valid_humidity = 50.0f;
-
     while (1) {
         float temp = 0.0f;
         float humidity = 0.0f;
         
         // 1. Echte Hardware-Messung des DHT22 starten
-        // Wir übergeben den Pin aus pin_config.h und die Adressen der Variablen via Zeiger
         bool dht_ok = dht22_read(GPIO_DHT22, &temp, &humidity);
         
-        if (dht_ok) {
-            // Wenn die Checksumme stimmt, sichern wir die Werte als Backup
-            last_valid_temp = temp;
-            last_valid_humidity = humidity;
-        } else {
-            // Fehlerfall: Keine Antwort vom Sensor oder kaputte Checksumme
-            ESP_LOGW("SENSOR_TASK", "Konnte DHT22-Sensor nicht lesen (GPIO %d). Nutze letzten bekannten Wert.", GPIO_DHT22);
-            temp = last_valid_temp;
-            humidity = last_valid_humidity;
+        if (!dht_ok) {
+            ESP_LOGW("SENSOR_TASK", "Konnte DHT22-Sensor nicht lesen (GPIO %d). Überspringe Update.", GPIO_DHT22);
         }
 
-        // 2. Echte Hardware-Messung der Bodenfeuchtigkeit aus soil.c laden
+        // 2. Bodenfeuchtigkeit auslesen
         int soil_moisture = read_soil_moisture();
 
-        ESP_LOGI("SENSOR_TASK", "Sensorwerte - Temp: %.1f°C, Luftfeuchtigkeit: %.1f%%, Bodenfeuchte: %d%%", 
-                 temp, humidity, soil_moisture);
+        // 3. Log-Ausgabe anpassen, je nachdem ob DHT erfolgreich war
+        if (dht_ok) {
+            ESP_LOGI("SENSOR_TASK", "Sensorwerte - Temp: %.1f°C, Luftfeuchtigkeit: %.1f%%, Bodenfeuchte: %d%%", 
+                     temp, humidity, soil_moisture);
+        } else {
+            ESP_LOGI("SENSOR_TASK", "Sensorwerte - DHT Fehler | Bodenfeuchte: %d%%", soil_moisture);
+        }
 
-        // 3. Werte sicher unter Mutex-Schutz in den globalen Zustand (sys_state) schreiben
+        // 4. Werte sicher unter Mutex-Schutz in den globalen Zustand schreiben
         if (xSemaphoreTake(state_mutex, pdMS_TO_TICKS(MUTEX_TIMEOUT_MS)) == pdTRUE) {
-            sys_state.current_temp = temp;
-            sys_state.air_humidity = humidity;
+            // Temperatur/Luftfeuchtigkeit NUR updaten, wenn die Messung gültig war
+            if (dht_ok) {
+                sys_state.current_temp = temp;
+                sys_state.air_humidity = humidity;
+            }
+            
+            // Bodenfeuchte wird immer geupdatet
             sys_state.soil_moisture_1 = soil_moisture;
+            
             xSemaphoreGive(state_mutex);
         } else {
             ESP_LOGE("SENSOR_TASK", "Konnte Mutex nicht sperren. State nicht aktualisiert!");
         }
 
         // Alle 60 Sekunden erneut messen
-        vTaskDelay(pdMS_TO_TICKS(60000)); 
+        vTaskDelay(pdMS_TO_TICKS(2000)); 
     }
 }
 
@@ -176,30 +175,24 @@ void app_main(void) {
     timer_start_logging(logger_write_sensor_data);
 
     // 5. Netzwerk-Infrastruktur
-    if (wifi_init_sta()) {
-        start_mdns_service();
-        start_webserver();
+    if (WIFI_STATUS == 1) {
+        if (wifi_init_sta()) {
+            start_mdns_service();
+            start_webserver();
+        }
     }
 
     // 6. Hintergrund-Tasks starten
     xTaskCreate(sensor_reading_task, "sensor_task", 3072, NULL, 5, NULL);
 
-    // 7. Status-LED Konfiguration
-    gpio_config_t led_conf = {
-        .pin_bit_mask = (1ULL << GPIO_LED),
-        .mode = GPIO_MODE_OUTPUT,
-        .pull_up_en = GPIO_PULLUP_DISABLE,
-        .pull_down_en = GPIO_PULLDOWN_DISABLE,
-        .intr_type = GPIO_INTR_DISABLE
-    };
-    gpio_config(&led_conf);
-
     // Unendliche Heartbeat-Schleife (app_main Task bleibt bestehen)
     bool led_state = false;
     while (1) {
+        actor_set_relay(led_state); // Hier könnte auch eine echte Status-LED angesteuert werden
         led_state = !led_state;
-        gpio_set_level(GPIO_LED, led_state ? 1 : 0);
-        ESP_LOGD(TAG, "Heartbeat - LED %s", led_state ? "ON" : "OFF"); // Auf DEBUG geändert, um Log nicht zu fluten
+        
+        ESP_LOGI(TAG, "Heartbeat - Relay %s", led_state ? "EIN" : "AUS");
+
         vTaskDelay(pdMS_TO_TICKS(1000));
     }
 }

@@ -24,13 +24,11 @@ static bool dht22_read_raw(gpio_num_t pin, uint8_t data[5]){
     vTaskDelay(pdMS_TO_TICKS(200));
 
     gpio_set_level(pin, 0);
-    int64_t start = esp_timer_get_time();
-    while ((uint32_t)(esp_timer_get_time() - start) < 20000) {
-        ;
-    }
-
+    vTaskDelay(pdMS_TO_TICKS(20));
+    
     gpio_set_level(pin, 1);
-    start = esp_timer_get_time();
+
+    int64_t start = esp_timer_get_time();
     while ((uint32_t)(esp_timer_get_time() - start) < 40) {
         ;
     }
@@ -82,11 +80,12 @@ bool dht22_read(gpio_num_t pin, float *out_temp_c, float *out_humidity){
         return false;
     }
 
-    *out_humidity = ((data[0] << 8) | data[1]) / 10.0f;
-    *out_temp_c = (((data[2] & 0x7F) << 8) | data[3]) / 10.0f;
-    if (data[2] & 0x80) {
-        *out_temp_c = -(*out_temp_c);
-    }
+    // --- NEUE BERECHNUNG FÜR DEN DHT11 ---
+    *out_humidity = data[0] + (data[1] / 10.0f);
+    *out_temp_c = data[2] + (data[3] / 10.0f);
+    
+    // (Die Negativ-Temperatur-Rechnung des DHT22 entfällt, 
+    // da der DHT11 standardmäßig keine Minusgrade messen kann)
 
     return true;
 }

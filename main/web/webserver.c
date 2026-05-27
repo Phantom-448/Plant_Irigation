@@ -2,7 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/param.h>
-#include "state.h"
+#include "logic/state.h"
 #include "webserver.h"
 #include "actor.h"
 #include "timer.h"
