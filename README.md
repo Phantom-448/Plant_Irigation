@@ -58,7 +58,7 @@ Das Projekt ist modular aufgebaut, damit jede Komponente nur eine Aufgabe übern
 
 ## 🔄 Prozessablauf
 
-Der Projektfluss umfasst die Initialisierung, zyklische Sensorauswertung und automatische Bewässerung.
+Der Projektfluss umfasst die Initialisierung, zyklische Sensorauswertung, automatische Bewässerung und Web-Dashboard-Steuerung.
 
 ```mermaid
 flowchart TD
@@ -70,6 +70,13 @@ flowchart TD
     F --> G[Sensorlese-Task startet]
     G --> H[Heartbeat-Schleife läuft]
 
+    subgraph Web UI
+        W[Web-Dashboard wird geladen]
+        W --> X[HTTP-API-Anfragen an /api/status]
+        X --> Y[Sensor- und Timerwerte anzeigen]
+        W --> Z[Steuerbefehle an API senden]
+    end
+
     subgraph Automatische Bewässerung
         I[Timer-Event] --> J[State lesen]
         J --> K{Bodenfeuchte OK?}
@@ -78,12 +85,14 @@ flowchart TD
         M --> N[Pumpe für Dauer einschalten]
     end
 
-    H --> I
-
     subgraph Manueller Taster
         O[Button gedrückt] --> P[Direkter Bewässerungsstart]
         P --> N
     end
+
+    H --> I
+    F --> W
+    Z --> N
 ```
 
 ## 📊 Kernfunktionen
@@ -97,6 +106,35 @@ Das Web-Dashboard wird eingebettet und lokal ausgeliefert. Es zeigt:
 * Profilauswahl
 * Zyklus- und Dauersteuerung
 * Direkten Pumpenschalter
+
+### Webserver-API
+Die Weboberfläche kommuniziert über lokale REST-API-Endpunkte mit dem ESP32.
+
+| Methode | Pfad | Payload | Beschreibung |
+|---|---|---|---|
+| GET | `/api/status` | - | Systemstatus, Sensorwerte, Timer, Pumpenstatus |
+| POST | `/api/cycle` | `{ "cycle_interval_minutes": 60, "watering_duration_minutes": 5 }` | Zyklus- und Bewässerungsdauer setzen |
+| POST | `/api/relay` | `{ "state": true }` | Relaiszustand ein-/ausschalten |
+| POST | `/api/start_watering` | `{ "duration_min": 10 }` | Manuelle Bewässerung starten |
+| GET | `/api/profiles` | - | Liste verfügbarer Profile als JSON-Array |
+| POST | `/api/profile/activate` | `{ "profile_name": "Sommer" }` | Profil laden und aktivieren |
+| GET | `/api/logs` | - | Sensorlog als CSV-Datei herunterladen |
+| GET | `/api/sdcard/test` | - | SD-Karten-Integrität prüfen |
+
+### Beispiel-API-Aufrufe
+```bash
+curl http://<esp-ip>/api/status
+curl -X POST http://<esp-ip>/api/cycle -H 'Content-Type: application/json' -d '{"cycle_interval_minutes":45,"watering_duration_minutes":6}'
+curl -X POST http://<esp-ip>/api/relay -H 'Content-Type: application/json' -d '{"state":true}'
+curl -X POST http://<esp-ip>/api/start_watering -H 'Content-Type: application/json' -d '{"duration_min":8}'
+curl http://<esp-ip>/api/profiles
+curl -X POST http://<esp-ip>/api/profile/activate -H 'Content-Type: application/json' -d '{"profile_name":"Sommer"}'
+curl http://<esp-ip>/api/logs
+curl http://<esp-ip>/api/sdcard/test
+```
+
+### Web-Dashboard-Integration
+Die HTML-Oberfläche wird über `/` ausgeliefert und verwendet diese Endpunkte, um live Sensorwerte zu laden, den Laufzeitzyklus zu konfigurieren, Profile zu wechseln und die Pumpe zu steuern.
 
 ### SD-Karte & Profile
 Die SD-Karte wird per SPI eingebunden und automatisiert in folgende Ordner strukturiert:
