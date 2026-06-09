@@ -41,7 +41,6 @@ static void watering_task(void *pvParameters)
     ESP_LOGI("ACTOR", "Starte manuelle Bewässerung für %d Minuten", minutes);
     actor_set_relay(true);
     if (minutes > 0) {
-        // Prevent overflow: split long delays into 5-minute chunks
         uint32_t remaining_minutes = (uint32_t)minutes;
         while (remaining_minutes > 0) {
             uint32_t chunk_minutes = (remaining_minutes > 5) ? 5 : remaining_minutes;

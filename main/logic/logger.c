@@ -1,4 +1,3 @@
-// --- logger.c ---
 #include "logger.h"
 #include "state.h"
 #include "pin_config.h"
@@ -8,7 +7,7 @@
 #include "sd_storage.h"
 
 void logger_write_sensor_data(void) {
-    // 1. Zeitstempel generieren
+    
     time_t now;
     struct tm timeinfo;
     time(&now);
@@ -19,7 +18,6 @@ void logger_write_sensor_data(void) {
 
     char log_buffer[128];
     
-    // 2. Daten sicher aus dem State holen und als CSV formatieren
     if (xSemaphoreTake(state_mutex, pdMS_TO_TICKS(MUTEX_TIMEOUT_MS)) == pdTRUE) {
         snprintf(log_buffer, sizeof(log_buffer), "%s,%.1f,%.1f,%d,%d\n",
                  time_str,
@@ -30,7 +28,7 @@ void logger_write_sensor_data(void) {
                  
         xSemaphoreGive(state_mutex);
         
-        // 3. An das SD-Modul übergeben
+        
         sd_write_log(log_buffer);
         ESP_LOGI("LOGGER", "Eintrag gespeichert: %s", log_buffer);
     } else {

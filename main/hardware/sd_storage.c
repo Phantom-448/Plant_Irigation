@@ -182,41 +182,35 @@ bool sd_card_self_test(void) {
 void sd_card_monitor_task(void *pvParameters) {
     while (1) {
         if (card != NULL) {
-            // Karte ist gemountet. Wir prüfen mit 'stat', ob sie noch antwortet.
             struct stat st;
             if (stat(SD_MOUNT_POINT, &st) != 0) {
                 ESP_LOGW(TAG, "SD-Mount nicht mehr erreichbar (Karte entfernt?). Versuche Unmount.");
                 unmount_sd_card_internal();
-                // Reset des Zählers, falls wir direkt eine neue Karte einstecken
                 mount_retry_count = 0; 
             }
         }
 
         if (card == NULL) {
-            // Nur versuchen, wenn wir das Limit noch nicht erreicht haben
             if (mount_retry_count < MAX_MOUNT_RETRIES) {
                 if (mount_sd_card_internal()) {
                     ESP_LOGI(TAG, "SD-Karte erfolgreich gemountet.");
-                    mount_retry_count = 0; // Bei Erfolg den Zähler zurücksetzen
+                    mount_retry_count = 0;
                 } else {
                     mount_retry_count++;
                     ESP_LOGD(TAG, "SD-Karte nicht verfügbar. Versuch %d/%d. Prüfe erneut in 5 Sekunden.", 
                              mount_retry_count, MAX_MOUNT_RETRIES);
                 }
             } 
-            // Einmalige Warnung, wenn das Limit exakt erreicht wurde
             else if (mount_retry_count == MAX_MOUNT_RETRIES) {
                 ESP_LOGW(TAG, "Maximale Anzahl an Mount-Versuchen (%d) erreicht. Stoppe automatische Abfrage.", MAX_MOUNT_RETRIES);
-                mount_retry_count++; // Zähler auf 6 erhöhen, damit diese Warnung nicht spammt
+                mount_retry_count++;
             }
         }
 
-        // Alle 5 Sekunden prüfen
         vTaskDelay(pdMS_TO_TICKS(5000));
     }
 }
 
-// NEUE FUNKTION: Weckt den Task wieder auf, wenn du manuell eine Karte eingesteckt hast
 void sd_card_retry_mount(void) {
     if (card == NULL) {
         ESP_LOGI(TAG, "Manueller SD-Mount-Versuch angefordert. Setze Zähler zurück.");

@@ -23,11 +23,9 @@ static esp_err_t sdcard_test_handler(httpd_req_t *req);
 
 static const char *TAG = "WEB_SERVER";
 
-/* Die index.html wird als Binärdaten eingebettet (siehe CMakeLists.txt) */
 extern const char index_html_start[] asm("_binary_index_html_start");
 extern const char index_html_end[]   asm("_binary_index_html_end");
 
-// 1. Handler für die Webseite (Root)
 static esp_err_t root_get_handler(httpd_req_t *req) {
     size_t html_len = index_html_end - index_html_start;
     httpd_resp_set_type(req, "text/html");
@@ -35,7 +33,6 @@ static esp_err_t root_get_handler(httpd_req_t *req) {
     return ESP_OK;
 }
 
-// 2. API Handler: Status senden (JSON)
 static bool parse_json_int(const char *src, const char *key, int *out) {
     const char *p = strstr(src, key);
     if (!p) return false;
@@ -102,7 +99,6 @@ static esp_err_t status_get_handler(httpd_req_t *req) {
     return ESP_OK;
 }
 
-// 3. API Handler: Einstellungen empfangen (JSON)
 static esp_err_t cycle_post_handler(httpd_req_t *req) {
     char content[128];
     int ret = httpd_req_recv(req, content, sizeof(content) - 1);
@@ -154,7 +150,6 @@ static esp_err_t watering_start_handler(httpd_req_t *req) {
 
 #include <sys/param.h>
 
-// Gemeinsame Hilfsfunktion, um Datei-Inhalte an den HTTP-Client zu senden.
 static esp_err_t serve_file_from_sd(httpd_req_t *req, const char *filepath, const char *content_type) {
     ESP_LOGI(TAG, "Serve file from SD: %s", filepath);
 
@@ -184,18 +179,14 @@ static esp_err_t serve_file_from_sd(httpd_req_t *req, const char *filepath, cons
     return ESP_OK;
 }
 
-// 1. Handler für die CSV-Logdatei
 static esp_err_t api_logs_handler(httpd_req_t *req) {
     const char *filepath = SD_LOG_FILE;
     return serve_file_from_sd(req, filepath, "text/csv");
 }
 
 static esp_err_t image_get_handler(httpd_req_t *req) {
-    // Der URI ist z.B. "/img/default_profile.jpg"
-    // Dein Code muss das "/img/" abschneiden und "/sdcard/profiles/" davor hängen!
     
     char filepath[128];
-    // Extrahiere den Dateinamen nach "/img/"
     const char *filename = req->uri + 5; // Versatz um 5 Zeichen wegen "/img/"
     
     snprintf(filepath, sizeof(filepath), "/sdcard/profiles/%s", filename);
@@ -206,7 +197,7 @@ static esp_err_t image_get_handler(httpd_req_t *req) {
     if (f == NULL) {
         ESP_LOGW(TAG, "Bild nicht gefunden: %s", filepath);
         httpd_resp_send_404(req);
-        return ESP_OK; // Verhindert den Absturz, aber liefert eben 404
+        return ESP_OK; 
     }
     fclose(f);
 
@@ -233,14 +224,14 @@ void start_webserver(void) {
     httpd_handle_t server = NULL;
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
 
-    config.max_uri_handlers = 16;  // Standard ist 8, wir setzen es auf 16
+    config.max_uri_handlers = 16;  
     config.lru_purge_enable = true; 
     config.uri_match_fn = httpd_uri_match_wildcard;
     
 
     ESP_LOGI(TAG, "Starte HTTP-Server...");
     if (httpd_start(&server, &config) == ESP_OK) {
-        // Routen registrieren
+        
         httpd_uri_t root = { .uri = "/", .method = HTTP_GET, .handler = root_get_handler };
         httpd_register_uri_handler(server, &root);
 
@@ -280,7 +271,6 @@ void start_webserver(void) {
     }
 }
 
-// Neuer GET-Handler in webserver.c
 static esp_err_t profiles_list_get_handler(httpd_req_t *req) {
     ProfileList_t *list = get_available_profiles();
     
@@ -311,7 +301,7 @@ static esp_err_t profiles_list_get_handler(httpd_req_t *req) {
     return ESP_OK;
 }
 
-// Handler zum Aktivieren eines Profils (POST)
+
 static esp_err_t profile_activate_post_handler(httpd_req_t *req) {
     char buf[64];
     int ret = httpd_req_recv(req, buf, sizeof(buf) - 1);
@@ -322,7 +312,7 @@ static esp_err_t profile_activate_post_handler(httpd_req_t *req) {
     if (root) {
         cJSON *name_item = cJSON_GetObjectItem(root, "profile_name");
         if (name_item && name_item->valuestring) {
-            // HIER rufst du die Lade-Funktion auf, die wir vorhin gebaut haben
+            
             load_and_activate_profile(name_item->valuestring); 
         }
         cJSON_Delete(root);

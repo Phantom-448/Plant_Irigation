@@ -24,6 +24,9 @@
 static int WIFI_STATUS = 0; // Setze auf 1, um WLAN-Funktionalität zu aktivieren (SSID/Passwort müssen in secrets.h definiert sein)
 static const char *TAG = "MAIN_APP";
 
+bool led_state = false;
+
+
 static void timer_cycle_callback(void) {
     ESP_LOGI("SMART_LOGIC", "Starte Profil-Auswertung...");
 
@@ -82,23 +85,29 @@ static void button_pressed_handler(void *arg)
     actor_start_timed_watering(watering_duration);
     timer_start_cycle(cycle_interval, watering_duration);
 }
+/* Button Debugg
+
+static void button_is_pressed(void *arg) {
+    led_state = true;
+    ESP_LOGI(TAG, "Button gedrückt: Manuelle Bewässerung starten");
+    actor_set_relay(led_state);
+}
+*/
+
 
 void sensor_reading_task(void *pvParameters) {
     while (1) {
         float temp = 0.0f;
         float humidity = 0.0f;
         
-        // 1. Echte Hardware-Messung des DHT22 starten
         bool dht_ok = dht22_read(GPIO_DHT22, &temp, &humidity);
         
         if (!dht_ok) {
             ESP_LOGW("SENSOR_TASK", "Konnte DHT22-Sensor nicht lesen (GPIO %d). Überspringe Update.", GPIO_DHT22);
         }
 
-        // 2. Bodenfeuchtigkeit auslesen
         int soil_moisture = read_soil_moisture();
 
-        // 3. Log-Ausgabe anpassen, je nachdem ob DHT erfolgreich war
         if (dht_ok) {
             ESP_LOGI("SENSOR_TASK", "Sensorwerte - Temp: %.1f°C, Luftfeuchtigkeit: %.1f%%, Bodenfeuchte: %d%%", 
                      temp, humidity, soil_moisture);
@@ -106,15 +115,12 @@ void sensor_reading_task(void *pvParameters) {
             ESP_LOGI("SENSOR_TASK", "Sensorwerte - DHT Fehler | Bodenfeuchte: %d%%", soil_moisture);
         }
 
-        // 4. Werte sicher unter Mutex-Schutz in den globalen Zustand schreiben
         if (xSemaphoreTake(state_mutex, pdMS_TO_TICKS(MUTEX_TIMEOUT_MS)) == pdTRUE) {
-            // Temperatur/Luftfeuchtigkeit NUR updaten, wenn die Messung gültig war
             if (dht_ok) {
                 sys_state.current_temp = temp;
                 sys_state.air_humidity = humidity;
             }
             
-            // Bodenfeuchte wird immer geupdatet
             sys_state.soil_moisture_1 = soil_moisture;
             
             xSemaphoreGive(state_mutex);
@@ -122,7 +128,6 @@ void sensor_reading_task(void *pvParameters) {
             ESP_LOGE("SENSOR_TASK", "Konnte Mutex nicht sperren. State nicht aktualisiert!");
         }
 
-        // Alle 60 Sekunden erneut messen
         vTaskDelay(pdMS_TO_TICKS(2000)); 
     }
 }
@@ -130,7 +135,6 @@ void sensor_reading_task(void *pvParameters) {
 void app_main(void) {
     ESP_LOGI(TAG, "Starte Garten-Bewässerung auf ESP32-C3...");
 
-    // 1. Basis-Subsysteme initialisieren
     esp_err_t ret = nvs_flash_init();
     if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
         ESP_ERROR_CHECK(nvs_flash_erase());
@@ -141,14 +145,12 @@ void app_main(void) {
     state_init();
     actor_init();        
 
-    // 2. Peripherie & Taster
     if (!button_init(GPIO_BUTTON)) {
         ESP_LOGW(TAG, "Taster konnte nicht initialisiert werden");
     } else {
         button_set_callback(button_pressed_handler, NULL);
     }
 
-    // 3. Speicher (SD-Karte)
     init_sd_card();   
     xTaskCreate(sd_card_monitor_task, "sd_monitor", 3072, NULL, 5, NULL);
 
@@ -159,7 +161,6 @@ void app_main(void) {
         ESP_LOGW(TAG, "SD-Karten-Selbsttest fehlgeschlagen.");
     }
 
-    // 4. Zeitsteuerung & Logik
     timer_init();
     timer_register_callback(timer_cycle_callback);
     
@@ -174,7 +175,6 @@ void app_main(void) {
     timer_start_cycle(cycle_interval_minutes, watering_duration_minutes);
     timer_start_logging(logger_write_sensor_data);
 
-    // 5. Netzwerk-Infrastruktur
     if (WIFI_STATUS == 1) {
         if (wifi_init_sta()) {
             start_mdns_service();
@@ -182,17 +182,16 @@ void app_main(void) {
         }
     }
 
-    // 6. Hintergrund-Tasks starten
     xTaskCreate(sensor_reading_task, "sensor_task", 3072, NULL, 5, NULL);
 
-    // Unendliche Heartbeat-Schleife (app_main Task bleibt bestehen)
-    bool led_state = false;
+    /* Heartbeat-Schleife - kann für Debugging-Zwecke aktiviert werden
+
     while (1) {
-        actor_set_relay(led_state); // Hier könnte auch eine echte Status-LED angesteuert werden
-        led_state = !led_state;
         
         ESP_LOGI(TAG, "Heartbeat - Relay %s", led_state ? "EIN" : "AUS");
-
+        led_state = !led_state;
+        actor_set_relay(led_state);
         vTaskDelay(pdMS_TO_TICKS(1000));
     }
+    */
 }

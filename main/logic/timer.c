@@ -40,7 +40,6 @@ static void timer_task(void *pvParameters)
 
         if (s_watering_duration_minutes > 0) {
             ESP_LOGI(TAG, "Bewässerung läuft %d Minuten", s_watering_duration_minutes);
-            // Split watering delays into 5-minute chunks to prevent overflow
             uint32_t remaining_minutes = (uint32_t)s_watering_duration_minutes;
             while (remaining_minutes > 0) {
                 uint32_t chunk_minutes = (remaining_minutes > 5) ? 5 : remaining_minutes;
@@ -135,21 +134,19 @@ void timer_register_callback(void (*callback)(void))
     s_cycle_callback = callback;
 }
 
-// --- LOGGING TIMER BEREICH ---
 
 static TaskHandle_t s_logging_task = NULL;
 static void (*s_logging_callback)(void) = NULL;
 
 static void logging_timer_task(void *pvParameters)
 {
-    // Exakt 15 Minuten in Millisekunden
+    
     const TickType_t xFrequency = pdMS_TO_TICKS(15 * 60 * 1000); 
     TickType_t xLastWakeTime = xTaskGetTickCount();
 
     ESP_LOGI(TAG, "Logging-Timer Task gestartet (15 Min Intervall)");
 
     while (1) {
-        // Pausiert den Task präzise für 15 Minuten
         vTaskDelayUntil(&xLastWakeTime, xFrequency);
 
         ESP_LOGD(TAG, "15 Minuten erreicht, rufe Logging-Callback auf");

@@ -80,12 +80,9 @@ bool dht22_read(gpio_num_t pin, float *out_temp_c, float *out_humidity){
         return false;
     }
 
-    // --- NEUE BERECHNUNG FÜR DEN DHT11 ---
     *out_humidity = data[0] + (data[1] / 10.0f);
     *out_temp_c = data[2] + (data[3] / 10.0f);
     
-    // (Die Negativ-Temperatur-Rechnung des DHT22 entfällt, 
-    // da der DHT11 standardmäßig keine Minusgrade messen kann)
 
     return true;
 }
