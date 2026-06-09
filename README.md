@@ -12,19 +12,20 @@ Das System ist bewusst ohne Cloud konzipiert:
 
 ## 📌 Hardware & Pin-Konfiguration
 
-Die Hardware-Pins sind zentral in `main/pin_config.h` abgelegt. Dort findest du die wichtigsten Zuordnungen für Relais, SD-Karte und I2C.
+Die Hardware-Pins sind zentral in `main/pin_config.h` abgelegt. Dort findest du die wichtigsten Zuordnungen für Relais, SD-Karte, Sensoren und den manuellen Taster.
 
 ### Aktuelle GPIO-Belegung
 
 | Funktion | Makro | Pin |
 |---|---|---|
-| Relais / Pumpe | `GPIO_RELAY` | GPIO 10 |
-| SD-Karte MISO | `GPIO_SD_MISO` | GPIO 5 |
-| SD-Karte MOSI | `GPIO_SD_MOSI` | GPIO 6 |
-| SD-Karte SCLK | `GPIO_SD_SCLK` | GPIO 4 |
-| SD-Karte CS | `GPIO_SD_CS` | GPIO 7 |
-| I2C SDA (Sensor) | `GPIO_I2C_SDA` | GPIO 8 |
-| I2C SCL (Sensor) | `GPIO_I2C_SCL` | GPIO 9 |
+| Relais / Pumpe | `GPIO_RELAY` | GPIO 4 |
+| SD-Karte MOSI | `GPIO_SD_MOSI` | GPIO 27 |
+| SD-Karte MISO | `GPIO_SD_MISO` | GPIO 25 |
+| SD-Karte SCLK | `GPIO_SD_SCLK` | GPIO 26 |
+| SD-Karte CS | `GPIO_SD_CS` | GPIO 14 |
+| DHT22 Sensor | `GPIO_DHT22` | GPIO 12 |
+| Bodenfeuchtigkeit (ADC1) | `GPIO_SOIL_MOISTURE` | GPIO 36 |
+| Manueller Taster (Pulldown) | `GPIO_BUTTON` | GPIO 13 |
 
 ### SD-Dateipfade
 
@@ -36,15 +37,14 @@ Die Hardware-Pins sind zentral in `main/pin_config.h` abgelegt. Dort findest du 
 
 Diese Pfade werden im SD-Modul verwendet, damit alle Dateizugriffe konsistent bleiben.
 
-
 ## 🧱 Software-Architektur
 
 Das Projekt ist modular aufgebaut, damit jede Komponente nur eine Aufgabe übernimmt.
 
 ### Wichtige Module
 
-* `main.c` – Systemstart, Initialisierung, zyklische Smart-Logik
-* `state.c` / `state.h` – globaler Systemzustand mit Mutex
+* `main.c` – Systemstart, Initialisierung und zyklische Smart-Logik
+* `state.c` / `state.h` – globaler Systemzustand mit Mutex-Schutz
 * `actor.c` / `actor.h` – Pumpen-/Relaissteuerung
 * `wlan.c` / `wlan.h` – WiFi-Station und Webserver-Start
 * `webserver.c` / `webserver.h` – HTTP-Server und REST-API
@@ -52,8 +52,39 @@ Das Projekt ist modular aufgebaut, damit jede Komponente nur eine Aufgabe übern
 * `logger.c` / `logger.h` – CSV-Logging von Sensordaten
 * `sd_storage.c` / `sd_storage.h` – SD-Karten-Mount, Log- und Profilzugriff
 * `profile_manager.c` / `profile_manager.h` – Scannen und Aktivieren von Bewässerungsprofilen
-* `temp.c` / `temp.h` – Temperaturmessung und Filterung
-* `humid.c` / `humid.h` – Feuchtigkeitsmessung und Filterung
+* `dht22.c` / `dht22.h` – DHT22-Temperatur-/Feuchtigkeitsmessung
+* `soil.c` / `soil.h` – Bodenfeuchtemessung
+* `pin_config.h` – zentrale Pin- und Pfaddefinitionen
+
+## 🔄 Prozessablauf
+
+Der Projektfluss umfasst die Initialisierung, zyklische Sensorauswertung und automatische Bewässerung.
+
+```mermaid
+flowchart TD
+    A[Start: ESP32-C3 bootet] --> B[NVS & Systeminit]
+    B --> C[Pin- & Peripherie-Initialisierung]
+    C --> D[Button init + SD-Mount]
+    D --> E[Timer & Logging starten]
+    E --> F[WiFi / Webserver optional]
+    F --> G[Sensorlese-Task startet]
+    G --> H[Heartbeat-Schleife läuft]
+
+    subgraph Automatische Bewässerung
+        I[Timer-Event] --> J[State lesen]
+        J --> K{Bodenfeuchte OK?}
+        K -- Ja --> L[Keine Bewässerung]
+        K -- Nein --> M[Dauer berechnen]
+        M --> N[Pumpe für Dauer einschalten]
+    end
+
+    H --> I
+
+    subgraph Manueller Taster
+        O[Button gedrückt] --> P[Direkter Bewässerungsstart]
+        P --> N
+    end
+```
 
 ## 📊 Kernfunktionen
 
@@ -93,16 +124,17 @@ idf.py flash
 ```
 
 ### Laufend
-* Das Web-Dashboard ist nach dem Start über die IP-Adresse des ESP erreichbar oder auch über bewaesserung.local
+* Das Web-Dashboard ist nach dem Start über die IP-Adresse des ESP erreichbar oder auch über `bewaesserung.local`
 * Profile werden beim Start von der SD-Karte eingelesen
 * Logs werden periodisch in `sensor_log.csv` geschrieben
 
 ## 💡 Hinweise
 
-* `humid.c` ist als I2C-Sensor vorbereitet, liefert aktuell aber simulierte Messwerte.
-* `temp.c` nutzt den internen Temperatursensor des ESP32-C3.
+* `dht22.c` ist die aktuelle Sensoranbindung für Temperatur und Luftfeuchte.
+* `temp.c` kann zusätzlich den internen C3-Temperatursensor nutzen.
+* Der manuelle Taster (`GPIO_BUTTON`) ist als Pulldown-Taster ausgelegt.
 * Alle Hardware-Pins werden aus `main/pin_config.h` geladen.
 
 ---
 
-Mit dieser Struktur kannst du das Projekt leicht erweitern: echte I2C-Sensoren, Profil-Logik oder weitere Relaisausgänge lassen sich zentral konfigurieren.
+Mit dieser Struktur kannst du das Projekt leicht erweitern: zusätzliche Sensoren, neue Profile oder weitere Relaisausgänge lassen sich zentral konfigurieren.
