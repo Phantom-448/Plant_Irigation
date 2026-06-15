@@ -8,6 +8,7 @@
 
 static bool s_actor_state = false;
 static TaskHandle_t s_watering_task = NULL;
+static volatile bool s_cancel_watering = false; // Neuer Abbruch-Flag
 
 void actor_set_relay(bool on) {
     s_actor_state = on;
@@ -17,9 +18,6 @@ void actor_set_relay(bool on) {
         sys_state.valve_1_state = on;
         xSemaphoreGive(state_mutex);
         ESP_LOGI("ACTOR", "Relais %s", on ? "EIN" : "AUS");
-    } else {
-        // The hardware changed, but sys_state didn't!
-        ESP_LOGE("ACTOR", "CRITICAL: Relay changed to %s, but sys_state sync timed out!", on ? "EIN" : "AUS");
     }
 }
 
@@ -35,47 +33,37 @@ void actor_init(void) {
     actor_set_relay(false);
 }
 
-static void watering_task(void *pvParameters)
-{
+static void watering_task(void *pvParameters) {
     int minutes = (int)(intptr_t)pvParameters;
-    ESP_LOGI("ACTOR", "Starte manuelle Bewässerung für %d Minuten", minutes);
+    ESP_LOGI("ACTOR", "Starte Bewässerung für %d Minuten", minutes);
+    
     actor_set_relay(true);
+    
     if (minutes > 0) {
         uint32_t remaining_minutes = (uint32_t)minutes;
-        while (remaining_minutes > 0) {
+        while (remaining_minutes > 0 && !s_cancel_watering) {
             uint32_t chunk_minutes = (remaining_minutes > 5) ? 5 : remaining_minutes;
             vTaskDelay(pdMS_TO_TICKS(chunk_minutes * 60000));
+            if (s_cancel_watering) break;
             remaining_minutes -= chunk_minutes;
         }
     }
+    
     actor_set_relay(false);
     s_watering_task = NULL;
     vTaskDelete(NULL);
 }
 
-void actor_start_timed_watering(int minutes)
-{
-    if (minutes <= 0) {
-        ESP_LOGW("ACTOR", "Ungültige Bewässerungsdauer: %d Minuten", minutes);
-        return;
-    }
+void actor_start_timed_watering(int minutes) {
+    if (minutes <= 0) return;
 
     if (s_watering_task != NULL) {
-        ESP_LOGW("ACTOR", "Bestehende Bewässerung abbrechen und neu starten");
-        actor_set_relay(false);
-        vTaskDelete(s_watering_task);
-        s_watering_task = NULL;
+        ESP_LOGI("ACTOR", "Bestehende Bewässerung wird abgebrochen.");
+        s_cancel_watering = true;
+        xTaskAbortDelay(s_watering_task); // Task wecken
+        while(s_watering_task != NULL) { vTaskDelay(pdMS_TO_TICKS(10)); } // Warten bis beendet
     }
 
-    BaseType_t result = xTaskCreate(watering_task,
-                                    "watering_task",
-                                    3072,
-                                    (void *)(intptr_t)minutes,
-                                    5,
-                                    &s_watering_task);
-    if (result != pdPASS) {
-        ESP_LOGE("ACTOR", "Bewässerungs-Task konnte nicht gestartet werden");
-        actor_set_relay(false);
-        s_watering_task = NULL;
-    }
+    s_cancel_watering = false;
+    xTaskCreate(watering_task, "watering_task", 3072, (void *)(intptr_t)minutes, 5, &s_watering_task);
 }

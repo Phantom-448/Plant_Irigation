@@ -1,17 +1,16 @@
 #include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/param.h>
-#include "logic/state.h"
+#include "state.h" 
 #include "webserver.h"
 #include "actor.h"
 #include "timer.h"
 #include "cJSON.h"
 #include "profile_manager.h"
 #include "sd_storage.h"
-#include "pin_config.h"
 #include <esp_log.h>
 #include <esp_http_server.h>
+#include "pin_config.h"
 
 static esp_err_t watering_start_handler(httpd_req_t *req);
 static esp_err_t relay_post_handler(httpd_req_t *req);
@@ -64,10 +63,9 @@ static bool parse_json_bool(const char *src, const char *key, bool *out) {
 static esp_err_t status_get_handler(httpd_req_t *req) {
     float temperature = 0.0f;
     float air_humidity = 0.0f;
-    float capacitive_humidity = 0.0f;
     int soil_moisture = 0;
-    int seconds_to_next = timer_get_seconds_to_next_cycle();
-    bool pump_running = sys_state.valve_1_state;
+    bool pump_running = false; // Wird jetzt aus dem Mutex gelesen
+    int minutes_to_next = timer_get_seconds_to_next_cycle() / 60; // In Minuten umgerechnet
     int cycle_interval = timer_get_cycle_interval_minutes();
     int watering_duration = timer_get_watering_duration_minutes();
 
@@ -75,24 +73,15 @@ static esp_err_t status_get_handler(httpd_req_t *req) {
         temperature = sys_state.current_temp;
         air_humidity = sys_state.air_humidity;
         soil_moisture = sys_state.soil_moisture_1;
+        pump_running = sys_state.valve_1_state;
         xSemaphoreGive(state_mutex);
     }
 
     char response[256];
     int len = snprintf(response, sizeof(response),
-        "{\"temperature\": %.1f, \"air_humidity\": %.1f, \"capacitive_humidity\": %.1f, \"soil_moisture_1\": %d, \"pump_running\": %s, \"seconds_to_next_water\": %d, \"cycle_interval_minutes\": %d, \"watering_duration_minutes\": %d}",
-        temperature,
-        air_humidity,
-        capacitive_humidity,
-        soil_moisture,
-        pump_running ? "true" : "false",
-        seconds_to_next,
-        cycle_interval,
-        watering_duration);
-
-    if (len < 0 || len >= sizeof(response)) {
-        return ESP_FAIL;
-    }
+        "{\"temperature\": %.1f, \"air_humidity\": %.1f, \"soil_moisture_1\": %d, \"pump_running\": %s, \"minutes_to_next_water\": %d, \"cycle_interval_minutes\": %d, \"watering_duration_minutes\": %d}",
+        temperature, air_humidity, soil_moisture, pump_running ? "true" : "false",
+        minutes_to_next, cycle_interval, watering_duration);
 
     httpd_resp_set_type(req, "application/json");
     httpd_resp_send(req, response, len);

@@ -1,4 +1,4 @@
-﻿#include "dht22.h"
+﻿#include "air_sensor.h"
 #include <stdint.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -6,7 +6,8 @@
 #include "esp_timer.h"
 #include "esp_log.h"
 
-static const char *TAG = "DHT22";
+static const char *TAG = "AIR_SENSOR";
+static portMUX_TYPE mux = portMUX_INITIALIZER_UNLOCKED;
 
 static int64_t wait_for_level(gpio_num_t pin, int level, uint32_t timeout_us){
     int64_t start = esp_timer_get_time();
@@ -18,13 +19,13 @@ static int64_t wait_for_level(gpio_num_t pin, int level, uint32_t timeout_us){
     return esp_timer_get_time() - start;
 }
 
-static bool dht22_read_raw(gpio_num_t pin, uint8_t data[5]){
+static bool air_sensor_read_raw(gpio_num_t pin, uint8_t data[5]){
     gpio_set_direction(pin, GPIO_MODE_OUTPUT);
     gpio_set_level(pin, 1);
     vTaskDelay(pdMS_TO_TICKS(200));
 
     gpio_set_level(pin, 0);
-    vTaskDelay(pdMS_TO_TICKS(20));
+    vTaskDelay(pdMS_TO_TICKS(20)); 
     
     gpio_set_level(pin, 1);
 
@@ -35,18 +36,24 @@ static bool dht22_read_raw(gpio_num_t pin, uint8_t data[5]){
 
     gpio_set_direction(pin, GPIO_MODE_INPUT);
 
+    portENTER_CRITICAL(&mux);
+
     if (wait_for_level(pin, 0, 1000) < 0) {
+        portEXIT_CRITICAL(&mux);
         return false;
     }
     if (wait_for_level(pin, 1, 1000) < 0) {
+        portEXIT_CRITICAL(&mux);
         return false;
     }
 
     for (int i = 0; i < 40; ++i) {
         if (wait_for_level(pin, 0, 1000) < 0) {
+            portEXIT_CRITICAL(&mux);
             return false;
         }
         if (wait_for_level(pin, 1, 1000) < 0) {
+            portEXIT_CRITICAL(&mux);
             return false;
         }
 
@@ -60,37 +67,48 @@ static bool dht22_read_raw(gpio_num_t pin, uint8_t data[5]){
 
         int bit_index = i / 8;
         data[bit_index] <<= 1;
-        if (t_high_duration > 50) {
+        
+        if (t_high_duration > 40) {
             data[bit_index] |= 1;
         }
     }
 
+    portEXIT_CRITICAL(&mux);
+
     uint8_t checksum = data[0] + data[1] + data[2] + data[3];
     if (checksum != data[4]) {
-        ESP_LOGW(TAG, "DHT22 checksum failure: calculated %02X, expected %02X", checksum, data[4]);
+        ESP_LOGD(TAG, "Checksum-Fehler: Berechnet %02X, Erwartet %02X", checksum, data[4]);
         return false;
     }
 
     return true;
 }
 
-bool dht22_read(gpio_num_t pin, float *out_temp_c, float *out_humidity){
+bool air_sensor_read(gpio_num_t pin, float *out_temp_c, float *out_humidity){
     uint8_t data[5] = {0};
-    if (!dht22_read_raw(pin, data)) {
-        return false;
+    int max_retries = 3;
+    
+    for (int retry = 0; retry < max_retries; retry++) {
+        if (air_sensor_read_raw(pin, data)) {
+            *out_humidity = (float)data[0] + ((float)data[1] / 10.0f);
+            *out_temp_c = (float)data[2] + ((float)data[3] / 10.0f);
+            return true;
+        }
+        
+        if (retry < max_retries - 1) {
+            ESP_LOGI(TAG, "WLAN-Interferenz erkannt. Lese Sensor in 2s neu aus (Versuch %d/3)...", retry + 1);
+            vTaskDelay(pdMS_TO_TICKS(2100)); 
+        }
     }
 
-    *out_humidity = data[0] + (data[1] / 10.0f);
-    *out_temp_c = data[2] + (data[3] / 10.0f);
-    
-
-    return true;
+    ESP_LOGW(TAG, "Konnte DHT11 trotz 3 Versuchen nicht stabil auslesen.");
+    return false;
 }
 
 bool c_humid_read(gpio_num_t pin, float *out_humidity){
     uint8_t data[5] = {0};
-    if (!dht22_read_raw(pin, data)) {
-        ESP_LOGW(TAG, "C_HUMID checksum failure or bus error on GPIO %d", pin);
+    if (!air_sensor_read_raw(pin, data)) {
+        ESP_LOGW(TAG, "Bus-Fehler an GPIO %d", pin);
         return false;
     }
 

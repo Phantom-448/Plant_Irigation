@@ -1,6 +1,5 @@
 #include "state.h"
 
-// Hier werden die Variablen WIRKLICH im Speicher angelegt
 SystemState_t sys_state = {
     .valve_1_state = false,
     .watering_duration = 10,
@@ -8,12 +7,12 @@ SystemState_t sys_state = {
     .air_humidity = 0.0f,
     .soil_moisture_1 = 0,
     .active_profile = {
-        .profile_name = "default",
+        .profile_name = "Tomate",
         .check_interval_minutes = 60,
-        .base_watering_minutes = 5,
-        .min_soil_moisture_percent = 40,
-        .hot_temp_threshold = 30.0f,
-        .hot_temp_extra_minutes = 3,
+        .base_watering_minutes = 8,
+        .min_soil_moisture_percent = 50,
+        .hot_temp_threshold = 28.0f,
+        .hot_temp_extra_minutes = 4,
     }
 };
 

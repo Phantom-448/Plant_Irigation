@@ -46,7 +46,7 @@ int read_soil_moisture(void)
         return -1;
     }
 
-    /* ESP32-C3 hat einen 12-bit ADC -> Max Wert ist 4095 */
+    
     float pct = ((float)raw / 4095.0f) * 100.0f;
     
     if (pct < 0) pct = 0;

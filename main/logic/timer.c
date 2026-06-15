@@ -12,68 +12,45 @@ static int s_watering_duration_minutes = 0;
 static int64_t s_next_cycle_timestamp_us = 0;
 static void (*s_cycle_callback)(void) = NULL;
 
-static void timer_task(void *pvParameters)
-{
-    ESP_LOGI(TAG, "Timer task gestartet: Intervall=%dmin, Dauer=%dmin",
-             s_cycle_interval_minutes, s_watering_duration_minutes);
+// Spinlock für sicheren 64-Bit Zugriff
+static portMUX_TYPE timer_mux = portMUX_INITIALIZER_UNLOCKED;
 
+static void timer_task(void *pvParameters) {
     while (s_timer_running) {
         int64_t now = esp_timer_get_time();
+        
+        portENTER_CRITICAL(&timer_mux);
         s_next_cycle_timestamp_us = now + (int64_t)s_cycle_interval_minutes * 60 * 1000000LL;
+        int64_t target = s_next_cycle_timestamp_us;
+        portEXIT_CRITICAL(&timer_mux);
 
-        int64_t wait_us = s_next_cycle_timestamp_us - now;
+        int64_t wait_us = target - now;
         if (wait_us > 0) {
             uint32_t wait_ms = (uint32_t)((wait_us + 999) / 1000);
-            vTaskDelay(pdMS_TO_TICKS(wait_ms));
+            vTaskDelay(pdMS_TO_TICKS(wait_ms)); // Kann durch xTaskAbortDelay geweckt werden
         }
 
-        if (!s_timer_running) {
-            break;
-        }
+        if (!s_timer_running) break;
 
-        ESP_LOGI(TAG, "Timer-Zyklus auslösen");
         if (s_cycle_callback) {
             s_cycle_callback();
-        } else {
-            ESP_LOGW(TAG, "Kein Callback registriert, Zyklus nicht ausgeführt");
-        }
-
-        if (s_watering_duration_minutes > 0) {
-            ESP_LOGI(TAG, "Bewässerung läuft %d Minuten", s_watering_duration_minutes);
-            uint32_t remaining_minutes = (uint32_t)s_watering_duration_minutes;
-            while (remaining_minutes > 0) {
-                uint32_t chunk_minutes = (remaining_minutes > 5) ? 5 : remaining_minutes;
-                vTaskDelay(pdMS_TO_TICKS(chunk_minutes * 60000));
-                remaining_minutes -= chunk_minutes;
-            }
         }
     }
-
-    ESP_LOGI(TAG, "Timer task beendet");
     s_timer_task = NULL;
     vTaskDelete(NULL);
 }
 
-void timer_init(void)
-{
+void timer_init(void) {
     s_timer_running = false;
     s_timer_task = NULL;
-    s_cycle_interval_minutes = 0;
-    s_watering_duration_minutes = 0;
-    s_next_cycle_timestamp_us = 0;
-    s_cycle_callback = NULL;
 }
 
-bool timer_start_cycle(int cycle_interval_minutes, int watering_duration_minutes)
-{
+bool timer_start_cycle(int cycle_interval_minutes, int watering_duration_minutes) {
     if (cycle_interval_minutes <= 0 || watering_duration_minutes < 0) {
-        ESP_LOGE(TAG, "Ungültige Timerwerte: interval=%d, duration=%d",
-                 cycle_interval_minutes, watering_duration_minutes);
         return false;
     }
 
     if (s_timer_running) {
-        ESP_LOGW(TAG, "Timer läuft bereits, starte neu");
         timer_stop();
     }
 
@@ -81,94 +58,49 @@ bool timer_start_cycle(int cycle_interval_minutes, int watering_duration_minutes
     s_watering_duration_minutes = watering_duration_minutes;
     s_timer_running = true;
 
-    BaseType_t result = xTaskCreate(timer_task, "timer_task", 3072, NULL, 5, &s_timer_task);
-    if (result != pdPASS) {
-        ESP_LOGE(TAG, "Timer task konnte nicht gestartet werden");
-        s_timer_running = false;
-        return false;
-    }
-
+    xTaskCreate(timer_task, "timer_task", 3072, NULL, 5, &s_timer_task);
     return true;
 }
 
-void timer_stop(void)
-{
-    if (!s_timer_running) {
-        return;
-    }
-
+void timer_stop(void) {
+    if (!s_timer_running) return;
     s_timer_running = false;
-    s_next_cycle_timestamp_us = 0;
     if (s_timer_task) {
-        vTaskDelay(pdMS_TO_TICKS(100));
+        xTaskAbortDelay(s_timer_task); // Task sofort aus dem Schlaf wecken
     }
 }
 
-bool timer_is_running(void)
-{
-    return s_timer_running;
-}
-
-int timer_get_seconds_to_next_cycle(void)
-{
-    if (!s_timer_running || s_next_cycle_timestamp_us <= 0) {
-        return 0;
-    }
+int timer_get_seconds_to_next_cycle(void) {
+    if (!s_timer_running) return 0;
+    
+    portENTER_CRITICAL(&timer_mux);
+    int64_t target = s_next_cycle_timestamp_us;
+    portEXIT_CRITICAL(&timer_mux);
+    
     int64_t now = esp_timer_get_time();
-    int64_t diff_us = s_next_cycle_timestamp_us - now;
+    int64_t diff_us = target - now;
     return diff_us > 0 ? (int)(diff_us / 1000000LL) : 0;
 }
 
-int timer_get_cycle_interval_minutes(void)
-{
-    return s_cycle_interval_minutes;
-}
-
-int timer_get_watering_duration_minutes(void)
-{
-    return s_watering_duration_minutes;
-}
-
-void timer_register_callback(void (*callback)(void))
-{
-    s_cycle_callback = callback;
-}
-
+int timer_get_cycle_interval_minutes(void) { return s_cycle_interval_minutes; }
+int timer_get_watering_duration_minutes(void) { return s_watering_duration_minutes; }
+void timer_register_callback(void (*callback)(void)) { s_cycle_callback = callback; }
 
 static TaskHandle_t s_logging_task = NULL;
 static void (*s_logging_callback)(void) = NULL;
 
-static void logging_timer_task(void *pvParameters)
-{
-    
+static void logging_timer_task(void *pvParameters) {
     const TickType_t xFrequency = pdMS_TO_TICKS(15 * 60 * 1000); 
     TickType_t xLastWakeTime = xTaskGetTickCount();
-
-    ESP_LOGI(TAG, "Logging-Timer Task gestartet (15 Min Intervall)");
-
     while (1) {
         vTaskDelayUntil(&xLastWakeTime, xFrequency);
-
-        ESP_LOGD(TAG, "15 Minuten erreicht, rufe Logging-Callback auf");
-        
-        if (s_logging_callback) {
-            s_logging_callback();
-        } else {
-            ESP_LOGW(TAG, "Kein Logging-Callback registriert!");
-        }
+        if (s_logging_callback) s_logging_callback();
     }
 }
 
-void timer_start_logging(void (*callback)(void))
-{
+void timer_start_logging(void (*callback)(void)) {
     s_logging_callback = callback;
-    
     if (s_logging_task == NULL) {
-        BaseType_t result = xTaskCreate(logging_timer_task, "logging_task", 3072, NULL, 4, &s_logging_task);
-        if (result != pdPASS) {
-            ESP_LOGE(TAG, "Logging-Timer Task konnte nicht gestartet werden");
-        }
-    } else {
-        ESP_LOGW(TAG, "Logging-Timer läuft bereits.");
+        xTaskCreate(logging_timer_task, "log_task", 3072, NULL, 4, &s_logging_task);
     }
 }

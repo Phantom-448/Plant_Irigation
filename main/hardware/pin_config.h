@@ -11,8 +11,8 @@
 // GPIO für das Relais (Wasserpumpe)
 #define GPIO_RELAY           4   
 
-// DHT22 Pin (falls angeschlossen)
-#define GPIO_DHT22           12
+// DHT11 Pin (umbenannt gemäß Konvention)
+#define GPIO_AIR_SENSOR      33
 
 #define GPIO_SOIL_MOISTURE   36    // ADC1_CHANNEL_0, für Bodenfeuchtigkeitssensor
 

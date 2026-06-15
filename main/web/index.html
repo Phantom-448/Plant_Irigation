@@ -13,18 +13,9 @@
         .gauge-container { width: 100%; height: 200px; }
         .countdown-text { font-size: 3rem; font-family: monospace; font-weight: bold; color: #0d6efd; letter-spacing: 2px;}
         .card { border-radius: 15px; border: none; box-shadow: 0 4px 15px rgba(0,0,0,0.05); }
-        
-        /* Das neue Navbar-Design mit Hintergrundbild von der SD-Karte */
-        .navbar-custom {
-            background-color: #198754; /* Bootstrap success-grün */
-            background-image: none;    /* Entfernt eventuelle Verläufe */
-            transition: background-image 0.3s ease; /* Weicher Übergang, falls ein Bild geladen wird */
-        }
+        .navbar-custom { background-color: #198754; }
     </style>
 </head>
-<div id="profileImageContainer" style="width: 100px; height: 100px; display: inline-block;">
-    <img id="profileImage" src="/img/default_profile.jpg" style="width: 100%; height: 100%; object-fit: cover;">
-</div>
 <body>
 
     <nav class="navbar navbar-dark navbar-custom shadow-sm mb-4 py-3">
@@ -36,7 +27,7 @@
 
     <div class="container pb-5">
         <div class="row g-4 mb-4">
-            <div class="col-6">
+            <div class="col-12 col-md-4">
                 <div class="card h-100 text-center">
                     <div class="card-body">
                         <h6 class="text-muted text-uppercase fw-bold"><i class="fa-solid fa-temperature-half text-danger"></i> Temperatur</h6>
@@ -44,11 +35,19 @@
                     </div>
                 </div>
             </div>
-            <div class="col-6">
+            <div class="col-12 col-md-4">
                 <div class="card h-100 text-center">
                     <div class="card-body">
                         <h6 class="text-muted text-uppercase fw-bold"><i class="fa-solid fa-droplet text-info"></i> Luftfeuchte</h6>
                         <div id="humidGauge" class="gauge-container"></div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-12 col-md-4">
+                <div class="card h-100 text-center">
+                    <div class="card-body">
+                        <h6 class="text-muted text-uppercase fw-bold"><i class="fa-solid fa-faucet-drip text-success"></i> Bodenfeuchte</h6>
+                        <div id="soilGauge" class="gauge-container"></div>
                     </div>
                 </div>
             </div>
@@ -107,11 +106,7 @@
                     <div class="card-body">
                         <h6 class="card-title text-muted fw-bold mb-3"><i class="fa-solid fa-file-lines"></i> Bewässerungs-Profil</h6>
                         
-                        <div class="text-center mb-4">
-                            <img id="profileImage" src="" alt="Profilbild" class="img-fluid rounded shadow-sm" style="max-height: 200px; display: none; object-fit: cover;">
-                        </div>
-
-                        <div class="input-group">
+                        <div class="input-group mt-3">
                             <select class="form-select" id="profileSelect">
                                 <option selected disabled>Lade Profile...</option>
                             </select>
@@ -179,6 +174,18 @@
             levelColors: ["#dc3545", "#ffc107", "#0dcaf0"]
         });
 
+        // NEU: Bodenfeuchtigkeits-Gauge hinzugefügt
+        let sGauge = new JustGage({
+            id: "soilGauge",
+            value: 0,
+            min: 0,
+            max: 100,
+            title: "%",
+            labelFontColor: "#333",
+            valueFontColor: "#198754",
+            levelColors: ["#dc3545", "#ffc107", "#198754"] // Rot = Trocken, Grün = Feucht
+        });
+
         // --- 3. Countdown Logik ---
         let targetWateringTime = Date.now();
 
@@ -213,6 +220,7 @@
 
                 tGauge.refresh(data.temperature);
                 hGauge.refresh(data.air_humidity);
+                sGauge.refresh(data.soil_moisture_1); // NEU: Aktualisiert das Bodenfeuchte-Gauge über das JSON-Feld
 
                 let minutesRemaining = data.minutes_to_next_water;
                 if(minutesRemaining > 0) {
@@ -303,33 +311,6 @@
             
             if(!selectedName) return;
 
-            // 1. Profilbild aktualisieren
-            const imgEl = document.getElementById('profileImage');
-            const containerEl = document.getElementById('profileImageContainer');
-            imgEl.src = `/img/${selectedName}.jpg`;
-            imgEl.style.display = 'inline-block';
-            imgEl.onerror = function() {
-                containerEl.innerHTML = `<span style="font-size: 5rem; line-height: 100px;">🪴</span>`;
-            };
-
-            // 2. NEU: Navbar-Hintergrundbild dynamisch anpassen
-            const navbar = document.querySelector('.navbar-custom');
-            
-            // Erstelle ein temporäres Image-Objekt, um zu prüfen, ob das profilpezifische Headerbild existiert
-            const testImg = new Image();
-            testImg.src = `/img/${selectedName}_header.jpg`;
-            
-            testImg.onload = function() {
-                // Wenn das Bild existiert, lade es in die Navbar
-                navbar.style.backgroundImage = `linear-gradient(rgba(0, 0, 0, 0.4), rgba(0, 0, 0, 0.4)), url('/img/${selectedName}_header.jpg')`;
-            };
-            
-            testImg.onerror = function() {
-                // Fallback: Wenn kein Profil-Header existiert, nutze das allgemeine Standardbild
-                navbar.style.backgroundImage = `linear-gradient(rgba(0, 0, 0, 0.4), rgba(0, 0, 0, 0.4)), url('/img/header.jpg')`;
-            };
-
-            // 3. Aktivierung an den ESP32 senden
             await fetch('/api/profile/activate', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -355,13 +336,12 @@
                 const tempValues = [];
                 const moistValues = [];
 
-                // Letzte 50 Einträge
                 const recentLines = lines.slice(-50);
 
                 recentLines.forEach(line => {
                     const cols = line.split(',');
                     if (cols.length >= 4) {
-                        labels.push(cols[0].substring(11, 16)); // Zeit extrahieren HH:MM
+                        labels.push(cols[0].substring(11, 16));
                         tempValues.push(parseFloat(cols[1]));
                         moistValues.push(parseInt(cols[3]));
                     }
@@ -400,7 +380,7 @@
                     },
                     options: {
                         responsive: true,
-                        maintainAspectRatio: false, // Wichtig für die Responsivität im Wrapper
+                        maintainAspectRatio: false,
                         interaction: { mode: 'index', intersect: false },
                         scales: {
                             y: { type: 'linear', display: true, position: 'left' },
@@ -416,8 +396,6 @@
         // --- 8. Initialisierung beim Laden ---
         loadProfilesList();
         loadAndDrawChart();
-        
-        // Chart alle 15 Minuten (900.000 ms) im Hintergrund aktualisieren
         setInterval(loadAndDrawChart, 900000); 
 
     </script>
