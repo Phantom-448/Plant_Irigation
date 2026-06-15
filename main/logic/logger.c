@@ -15,7 +15,7 @@ void logger_write_sensor_data(void) {
     time(&now);
     char time_str[64];
     
-    // Fallback: Wenn noch keine echte Zeit existiert, nutze Uptime in Sekunden
+    
     if (now < 100000) { 
         snprintf(time_str, sizeof(time_str), "Uptime_%llds", esp_timer_get_time() / 1000000LL);
     } else {
@@ -24,7 +24,7 @@ void logger_write_sensor_data(void) {
         strftime(time_str, sizeof(time_str), "%Y-%m-%d %H:%M:%S", &timeinfo);
     }
 
-    // Prüfen ob Datei existiert, ansonsten Header anlegen
+    
     if (access(SD_LOG_FILE, F_OK) != 0) {
         ESP_LOGI(TAG, "Logdatei existiert nicht. Erstelle CSV-Header.");
         sd_write_log("Zeitstempel,Temperatur_C,Luftfeuchte_Prozent,Bodenfeuchte_Prozent,Pumpe_Aktiv");
@@ -32,7 +32,7 @@ void logger_write_sensor_data(void) {
 
     char log_buffer[128];
     
-    // Sensordaten auslesen und schreiben
+    
     if (xSemaphoreTake(state_mutex, pdMS_TO_TICKS(MUTEX_TIMEOUT_MS)) == pdTRUE) {
         snprintf(log_buffer, sizeof(log_buffer), "%s,%.1f,%.1f,%d,%d",
                  time_str, 

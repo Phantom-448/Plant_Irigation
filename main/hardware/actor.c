@@ -8,7 +8,7 @@
 
 static bool s_actor_state = false;
 static TaskHandle_t s_watering_task = NULL;
-static volatile bool s_cancel_watering = false; // Neuer Abbruch-Flag
+static volatile bool s_cancel_watering = false;
 
 void actor_set_relay(bool on) {
     s_actor_state = on;
@@ -60,8 +60,8 @@ void actor_start_timed_watering(int minutes) {
     if (s_watering_task != NULL) {
         ESP_LOGI("ACTOR", "Bestehende Bewässerung wird abgebrochen.");
         s_cancel_watering = true;
-        xTaskAbortDelay(s_watering_task); // Task wecken
-        while(s_watering_task != NULL) { vTaskDelay(pdMS_TO_TICKS(10)); } // Warten bis beendet
+        xTaskAbortDelay(s_watering_task); 
+        while(s_watering_task != NULL) { vTaskDelay(pdMS_TO_TICKS(10)); } 
     }
 
     s_cancel_watering = false;

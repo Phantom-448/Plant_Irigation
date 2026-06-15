@@ -1,4 +1,3 @@
-## IDF Component Manager Manifest File
 dependencies:
   ## Required IDF version
   idf:
@@ -14,5 +13,7 @@ dependencies:
   #   # `public` flag doesn't have an effect dependencies of the `main` component.
   #   # All dependencies of `main` are public by default.
   #   public: true
+
   espressif/mdns: ^1.3.1
   espressif/cjson: ^1.7.19
+  esp-idf-lib/dht: "*"
