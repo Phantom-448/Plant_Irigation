@@ -23,7 +23,7 @@ Die Hardware-Pins sind zentral in `main/pin_config.h` abgelegt. Dort findest du 
 | SD-Karte MISO | `GPIO_SD_MISO` | GPIO 25 |
 | SD-Karte SCLK | `GPIO_SD_SCLK` | GPIO 26 |
 | SD-Karte CS | `GPIO_SD_CS` | GPIO 14 |
-| DHT22 Sensor | `GPIO_DHT22` | GPIO 12 |
+| Air Sensor (DHT22) | `GPIO_DHT22` | GPIO 12 |
 | Bodenfeuchtigkeit (ADC1) | `GPIO_SOIL_MOISTURE` | GPIO 36 |
 | Manueller Taster (Pulldown) | `GPIO_BUTTON` | GPIO 13 |
 
@@ -52,7 +52,7 @@ Das Projekt ist modular aufgebaut, damit jede Komponente nur eine Aufgabe übern
 * `logger.c` / `logger.h` – CSV-Logging von Sensordaten
 * `sd_storage.c` / `sd_storage.h` – SD-Karten-Mount, Log- und Profilzugriff
 * `profile_manager.c` / `profile_manager.h` – Scannen und Aktivieren von Bewässerungsprofilen
-* `dht22.c` / `dht22.h` – DHT22-Temperatur-/Feuchtigkeitsmessung
+* `air_sensor.c` / `air_sensor.h` – Air Sensor-Temperatur-/Feuchtigkeitsmessung
 * `soil.c` / `soil.h` – Bodenfeuchtemessung
 * `pin_config.h` – zentrale Pin- und Pfaddefinitionen
 
@@ -117,7 +117,7 @@ Die Weboberfläche kommuniziert über lokale REST-API-Endpunkte mit dem ESP32.
 | POST | `/api/relay` | `{ "state": true }` | Relaiszustand ein-/ausschalten |
 | POST | `/api/start_watering` | `{ "duration_min": 10 }` | Manuelle Bewässerung starten |
 | GET | `/api/profiles` | - | Liste verfügbarer Profile als JSON-Array |
-| POST | `/api/profile/activate` | `{ "profile_name": "Sommer" }` | Profil laden und aktivieren |
+| POST | `/api/profile/activate` | `{ "profile_name": "Tomaten" }` | Profil laden und aktivieren |
 | GET | `/api/logs` | - | Sensorlog als CSV-Datei herunterladen |
 | GET | `/api/sdcard/test` | - | SD-Karten-Integrität prüfen |
 
@@ -128,7 +128,7 @@ curl -X POST http://<esp-ip>/api/cycle -H 'Content-Type: application/json' -d '{
 curl -X POST http://<esp-ip>/api/relay -H 'Content-Type: application/json' -d '{"state":true}'
 curl -X POST http://<esp-ip>/api/start_watering -H 'Content-Type: application/json' -d '{"duration_min":8}'
 curl http://<esp-ip>/api/profiles
-curl -X POST http://<esp-ip>/api/profile/activate -H 'Content-Type: application/json' -d '{"profile_name":"Sommer"}'
+curl -X POST http://<esp-ip>/api/profile/activate -H 'Content-Type: application/json' -d '{"profile_name":"Tomaten"}'
 curl http://<esp-ip>/api/logs
 curl http://<esp-ip>/api/sdcard/test
 ```
@@ -168,7 +168,7 @@ idf.py flash
 
 ## 💡 Hinweise
 
-* `dht22.c` ist die aktuelle Sensoranbindung für Temperatur und Luftfeuchte.
+* `air_sensor.c` ist die aktuelle Sensoranbindung für Temperatur und Luftfeuchte.
 * `temp.c` kann zusätzlich den internen C3-Temperatursensor nutzen.
 * Der manuelle Taster (`GPIO_BUTTON`) ist als Pulldown-Taster ausgelegt.
 * Alle Hardware-Pins werden aus `main/pin_config.h` geladen.

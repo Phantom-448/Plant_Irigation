@@ -48,7 +48,7 @@ Alle GPIO-Zuordnungen sind zentral in `main/pin_config.h` definiert:
 |---|---|---|---|
 | **Pumpen-Relais** | Wasserpumpe steuern | GPIO 4 | Digital Output |
 | **Bodenfeuchtesensor** | Bodenfeuchtigkeit messen | GPIO 36 (ADC1) | Analog Input |
-| **DHT22 Sensor** | Temperatur & Luftfeuchte | GPIO 12 | Digital (1-Wire) |
+| **Air Sensor (DHT22)** | Temperatur & Luftfeuchte | GPIO 12 | Digital (1-Wire) |
 | **Manueller Button** | Manuelle Bewässerung | GPIO 13 (Pulldown) | Digital Input |
 | **SD-Karte MOSI** | SPI Datenleitung | GPIO 27 | SPI |
 | **SD-Karte MISO** | SPI Datenleitung | GPIO 25 | SPI |
@@ -112,7 +112,7 @@ Alle GPIO-Zuordnungen sind zentral in `main/pin_config.h` definiert:
 #### `profile_manager.c/h` – Bewässerungsprofile
 - Speichert Schwellwerte und Check-Intervalle
 - Lädt Profile von SD-Karte
-- Mehrere Profile möglich (z.B. "Sommer", "Winter")
+- Mehrere Profile möglich (z.B. "Tomaten", "Erdbeeren", "Basilikum")
 
 #### `logger.c/h` – Datenlogging
 - Schreibt Sensordaten periodisch auf SD-Karte
@@ -459,7 +459,7 @@ struct {
 ### Profile (JSON auf SD-Karte)
 ```json
 {
-  "name": "Balkonsommer",
+  "name": "Tomate",
   "soil_moisture_threshold": 35,
   "max_humidity": 80,
   "check_interval_minutes": 60,
