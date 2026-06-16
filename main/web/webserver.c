@@ -64,8 +64,8 @@ static esp_err_t status_get_handler(httpd_req_t *req) {
     float temperature = 0.0f;
     float air_humidity = 0.0f;
     int soil_moisture = 0;
-    bool pump_running = false; // Wird jetzt aus dem Mutex gelesen
-    int minutes_to_next = timer_get_seconds_to_next_cycle() / 60; // In Minuten umgerechnet
+    bool pump_running = false; 
+    int minutes_to_next = timer_get_seconds_to_next_cycle() / 60;
     int cycle_interval = timer_get_cycle_interval_minutes();
     int watering_duration = timer_get_watering_duration_minutes();
 

@@ -12,7 +12,6 @@ static int s_watering_duration_minutes = 0;
 static int64_t s_next_cycle_timestamp_us = 0;
 static void (*s_cycle_callback)(void) = NULL;
 
-// Spinlock für sicheren 64-Bit Zugriff
 static portMUX_TYPE timer_mux = portMUX_INITIALIZER_UNLOCKED;
 
 static void timer_task(void *pvParameters) {
@@ -27,7 +26,7 @@ static void timer_task(void *pvParameters) {
         int64_t wait_us = target - now;
         if (wait_us > 0) {
             uint32_t wait_ms = (uint32_t)((wait_us + 999) / 1000);
-            vTaskDelay(pdMS_TO_TICKS(wait_ms)); // Kann durch xTaskAbortDelay geweckt werden
+            vTaskDelay(pdMS_TO_TICKS(wait_ms)); 
         }
 
         if (!s_timer_running) break;
@@ -66,7 +65,7 @@ void timer_stop(void) {
     if (!s_timer_running) return;
     s_timer_running = false;
     if (s_timer_task) {
-        xTaskAbortDelay(s_timer_task); // Task sofort aus dem Schlaf wecken
+        xTaskAbortDelay(s_timer_task);
     }
 }
 

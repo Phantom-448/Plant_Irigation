@@ -19,28 +19,22 @@
 static const char *TAG = "WLAN_SERVICE";
 
 void start_mdns_service() {
-    // 1. mDNS initialisieren
+    
     esp_err_t err = mdns_init();
     if (err) {
         ESP_LOGE(TAG, "mDNS Init fehlgeschlagen: %d", err);
         return;
     }
-
-    // 2. Hostnamen festlegen (ergibt http://bewaesserung.local)
     ESP_ERROR_CHECK(mdns_hostname_set("bewaesserung"));
     
-    // 3. Instanz-Namen festlegen (für die Anzeige in Netzwerk-Tools)
     ESP_ERROR_CHECK(mdns_instance_name_set("ESP32-C3 Balkon-Bewässerung"));
 
-    // 4. Den HTTP-Dienst bekannt geben
-    // Damit wissen andere Geräte im Netz: "Hier läuft ein Webserver auf Port 80"
     mdns_service_add(NULL, "_http", "_tcp", 80, NULL, 0);
 
     ESP_LOGI(TAG, "mDNS gestartet: http://bewaesserung.local");
 }
 
 
-// Wir nutzen ein Event-Group, um zu signalisieren, wenn wir verbunden sind
 static EventGroupHandle_t s_wifi_event_group;
 #define WIFI_CONNECTED_BIT BIT0
 #define WIFI_FAIL_BIT      BIT1
@@ -52,10 +46,12 @@ static void event_handler(void* arg, esp_event_base_t event_base,
 {
     if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_START) {
         esp_wifi_connect();
+        
     } else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED) {
         wifi_event_sta_disconnected_t* event = (wifi_event_sta_disconnected_t*) event_data;
         ESP_LOGI(TAG, "Disconnected from AP, reason: %d", event->reason);
-        if (s_retry_num < 5) { // Versuche es 5 Mal
+
+        if (s_retry_num < 5) { 
             esp_wifi_connect();
             s_retry_num++;
             ESP_LOGI(TAG, "Versuche erneut mit dem AP zu verbinden...");

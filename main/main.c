@@ -17,7 +17,7 @@
 #include "soil.h"
 #include "air_sensor.h" 
 #include "pin_config.h"
-#include "smart_logic.h" // NEUE LOGIK
+#include "smart_logic.h" 
 
 static int WIFI_STATUS = 1;
 static const char *TAG = "MAIN_APP";
@@ -78,7 +78,7 @@ void app_main(void) {
     if (sd_card_self_test()) scan_profiles_on_sd();
 
     timer_init();
-    timer_register_callback(smart_logic_evaluate); // Nutzt jetzt die intelligente Logik
+    timer_register_callback(smart_logic_evaluate); 
     
     int cycle_interval_minutes = 60;
     if (xSemaphoreTake(state_mutex, pdMS_TO_TICKS(MUTEX_TIMEOUT_MS)) == pdTRUE) {
@@ -86,7 +86,7 @@ void app_main(void) {
         xSemaphoreGive(state_mutex);
     }
 
-    timer_start_cycle(cycle_interval_minutes, 0); // Startet ersten Zyklus ohne sofort zu gießen
+    timer_start_cycle(cycle_interval_minutes, 0); 
     timer_start_logging(logger_write_sensor_data);
 
     if (WIFI_STATUS == 1) {

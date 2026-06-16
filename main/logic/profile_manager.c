@@ -1,14 +1,14 @@
 #include "profile_manager.h"
 #include "cJSON.h"
 #include "state.h"
-#include "smart_logic.h" // <-- Behebt den "implicit declaration" Fehler
+#include "smart_logic.h" 
 #include <dirent.h>
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
 #include "esp_log.h"
 
-// <-- Behebt die Warnung, da TAG jetzt in den ESP_LOGs genutzt wird
+
 static const char *TAG = "PROFILE"; 
 static ProfileList_t available_profiles = { .count = 0 };
 
@@ -66,12 +66,10 @@ void load_and_activate_profile(const char* filename) {
         return;
     }
 
-    // --- HIER FEHLTE DIR VORHER DER CODE ---
     fseek(f, 0, SEEK_END);
     long length = ftell(f);
     fseek(f, 0, SEEK_SET);
     
-    // Die Variable wird hier deklariert
     char* json_data = malloc(length + 1);
     if (json_data == NULL) {
         ESP_LOGE(TAG, "Speicher konnte nicht reserviert werden");
@@ -82,8 +80,7 @@ void load_and_activate_profile(const char* filename) {
     fread(json_data, 1, length, f);
     json_data[length] = '\0';
     fclose(f);
-    // --------------------------------------
-
+    
     cJSON *root = cJSON_Parse(json_data);
     if (root) {
         if (xSemaphoreTake(state_mutex, portMAX_DELAY) == pdTRUE) {
@@ -108,7 +105,6 @@ void load_and_activate_profile(const char* filename) {
             xSemaphoreGive(state_mutex);
             ESP_LOGI(TAG, "Pflanzenprofil '%s' erfolgreich geladen. Starte Re-Evaluierung.", filename);
             
-            // Triggert sofort die smarte Logik und den neuen Timer!
             smart_logic_evaluate(); 
         }
         cJSON_Delete(root);
@@ -116,5 +112,5 @@ void load_and_activate_profile(const char* filename) {
         ESP_LOGE(TAG, "Fehler beim Parsen der JSON fuer Pflanze '%s'", filename);
     }
     
-    free(json_data); // Speicher wieder freigeben
+    free(json_data); 
 }
