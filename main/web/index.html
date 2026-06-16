@@ -145,12 +145,10 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/justgage/1.4.0/justgage.min.js"></script>
 
     <script>
-        // --- 1. Uhren & UI Setup ---
         setInterval(() => {
             document.getElementById('clock').innerText = new Date().toLocaleTimeString('de-DE', {hour: '2-digit', minute:'2-digit'});
         }, 1000);
 
-        // --- 2. Gauges Initialisieren ---
         let tGauge = new JustGage({
             id: "tempGauge",
             value: 0,
@@ -174,7 +172,7 @@
             levelColors: ["#dc3545", "#ffc107", "#0dcaf0"]
         });
 
-        // NEU: Bodenfeuchtigkeits-Gauge hinzugefügt
+        
         let sGauge = new JustGage({
             id: "soilGauge",
             value: 0,
@@ -183,10 +181,9 @@
             title: "%",
             labelFontColor: "#333",
             valueFontColor: "#198754",
-            levelColors: ["#dc3545", "#ffc107", "#198754"] // Rot = Trocken, Grün = Feucht
+            levelColors: ["#dc3545", "#ffc107", "#198754"] 
         });
 
-        // --- 3. Countdown Logik ---
         let targetWateringTime = Date.now();
 
         function updateCountdown() {
@@ -210,7 +207,6 @@
         }
         setInterval(updateCountdown, 1000);
 
-        // --- 4. Live-Daten (Status) vom ESP32 abrufen ---
         let currentPumpState = false;
 
         async function fetchStatus() {
@@ -220,7 +216,7 @@
 
                 tGauge.refresh(data.temperature);
                 hGauge.refresh(data.air_humidity);
-                sGauge.refresh(data.soil_moisture_1); // NEU: Aktualisiert das Bodenfeuchte-Gauge über das JSON-Feld
+                sGauge.refresh(data.soil_moisture_1);
 
                 let minutesRemaining = data.minutes_to_next_water;
                 if(minutesRemaining > 0) {
@@ -240,7 +236,7 @@
         setInterval(fetchStatus, 5000);
         setTimeout(fetchStatus, 500);
 
-        // --- 5. Steuer-Befehle ---
+        
         async function toggleRelay() {
             currentPumpState = !currentPumpState;
             updatePumpUI(currentPumpState);
@@ -280,7 +276,6 @@
             }
         }
 
-        // --- 6. Profil-Manager ---
         async function loadProfilesList() {
             try {
                 const response = await fetch('/api/profiles');
@@ -321,7 +316,6 @@
                 `Aktuell geladen: <span class="text-success fw-bold">${selectedName}</span>`;
         }
 
-        // --- 7. Histogramm (Chart.js) ---
         let logChartInstance = null;
 
         async function loadAndDrawChart() {
@@ -393,7 +387,6 @@
             }
         }
 
-        // --- 8. Initialisierung beim Laden ---
         loadProfilesList();
         loadAndDrawChart();
         setInterval(loadAndDrawChart, 900000); 

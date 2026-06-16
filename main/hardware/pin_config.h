@@ -8,10 +8,10 @@
 #define GPIO_SD_SCLK         26
 #define GPIO_SD_CS           14    
 
-// GPIO für das Relais (Wasserpumpe)
+// GPIO für das Relais
 #define GPIO_RELAY           4   
 
-// DHT11 Pin (umbenannt gemäß Konvention)
+// DHT11 Pin 
 #define GPIO_AIR_SENSOR      33
 
 #define GPIO_SOIL_MOISTURE   36    // ADC1_CHANNEL_0, für Bodenfeuchtigkeitssensor
@@ -25,8 +25,5 @@
 #define SD_PROFILE_DIR       SD_MOUNT_POINT "/profiles"
 #define SD_LOG_FILE          SD_LOG_DIR "/sensor_log.csv"
 
-// Set to 1 to use a simulated temperature sensor (no hardware). Set to 0 to use DHT22 if available.
-#define TEMP_SIMULATED       0
 
-// --- COMMON CONSTANTS ---
 #define MUTEX_TIMEOUT_MS     100  // Timeout for state_mutex operations (milliseconds)

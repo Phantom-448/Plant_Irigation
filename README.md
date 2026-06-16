@@ -4,7 +4,6 @@ Dieses Projekt baut ein lokal laufendes Bewässerungssystem für Balkonpflanzen 
 
 ## 🎯 Projektidee
 
-Das System ist bewusst ohne Cloud konzipiert:
 * lokale Entscheidungslogik für smarte Bewässerung
 * Web-Dashboard direkt auf dem ESP32-C3
 * Profile und Logs auf SD-Karte gespeichert
@@ -67,8 +66,8 @@ flowchart TD
     C --> D[Button init + SD-Mount]
     D --> E[Timer & Logging starten]
     E --> F[WiFi / Webserver optional]
-    F --> G[Sensorlese-Task startet]
-    G --> H[Heartbeat-Schleife läuft]
+    F --> H[Sensorlese-Task startet]
+    
 
     subgraph Web UI
         W[Web-Dashboard wird geladen]

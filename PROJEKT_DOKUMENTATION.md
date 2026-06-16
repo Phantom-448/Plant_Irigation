@@ -8,9 +8,9 @@
 
 - ✅ **Lokale Intelligenz**: Smart-Logik zur Bewässerungsentscheidung basierend auf Bodenfeuchtigkeit und Luftfeuchte
 - ✅ **Offline-Betrieb**: Keine Cloud-Abhängigkeit, lokales Web-Dashboard auf dem ESP32
-- ✅ **Datenspeinung**: Vollständige Sensordaten und Bewässerungsprotokolle auf SD-Karte
+- ✅ **Datenspeicherung**: Vollständige Sensordaten und Bewässerungsprotokolle auf SD-Karte
 - ✅ **Multitasking**: FreeRTOS für parallele Sensorauslesungen und Systemoperationen
-- ✅ **Manuelle & Auto-Modi**: Taster für manuelle Bewässerung, zyklische automatische Bewässerung
+- ✅ **Manuell & Auto-Modi**: Taster für manuelle Bewässerung, zyklische automatische Bewässerung
 
 ---
 
